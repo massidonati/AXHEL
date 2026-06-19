@@ -1,0 +1,15 @@
+// Copyright (C) 2026 University of Pisa - Dept. of Information Engineering
+// SPDX-License-Identifier: Apache-2.0
+
+#pragma once
+
+#cmakedefine AXHEL_USE_GNU
+#cmakedefine AXHEL_USE_CLANG
+
+#cmakedefine AXHEL_HAS_SVE
+#cmakedefine AXHEL_HAS_SVE2
+
+#cmakedefine AXHEL_DEBUG
+
+// Avoid unused variable warnings
+#define AXHEL_UNUSED(x) (void)(x)

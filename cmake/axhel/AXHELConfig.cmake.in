@@ -1,0 +1,27 @@
+# Copyright (C) 2026 University of Pisa - Dept. of Information Engineering
+# SPDX-License-Identifier: Apache-2.0
+
+@PACKAGE_INIT@
+
+include(CMakeFindDependencyMacro)
+#find_package(CpuFeatures CONFIG)
+#if(NOT CpuFeatures_FOUND)
+#    message(WARNING "Could not find pre-installed CpuFeatures; using CpuFeatures packaged with AXHEL")
+#endif()
+
+include(${CMAKE_CURRENT_LIST_DIR}/AXHELTargets.cmake)
+
+# Defines AXHEL_FOUND: If AXHEL library was found
+if(TARGET AXHEL::axhel)
+    set(AXHEL_FOUND TRUE)
+    message(STATUS "AXHEL found")
+else()
+    message(STATUS "AXHEL not found")
+endif()
+
+set(AXHEL_VERSION "@AXHEL_VERSION@")
+set(AXHEL_VERSION_MAJOR "@AXHEL_VERSION_MAJOR@")
+set(AXHEL_VERSION_MINOR "@AXHEL_VERSION_MINOR@")
+set(AXHEL_VERSION_PATCH "@AXHEL_VERSION_PATCH@")
+
+set(AXHEL_DEBUG "@AXHEL_DEBUG@")
