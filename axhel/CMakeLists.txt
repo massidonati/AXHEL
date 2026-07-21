@@ -8,6 +8,7 @@ set(NATIVE_SRC
     eltwise/eltwise-fma-mod.cpp
     eltwise/eltwise-reduce-mod.cpp
     number-theory/multiply-factor.cpp
+    ntt/ntt.cpp
 )
 
 if (AXHEL_HAS_SVE)
@@ -17,6 +18,7 @@ if (AXHEL_HAS_SVE)
         eltwise/eltwise-mul-mod-sve.cpp
         eltwise/eltwise-fma-mod-sve.cpp
         eltwise/eltwise-reduce-mod-sve.cpp
+        ntt/ntt-sve.cpp
     )
 endif()
 
@@ -24,6 +26,7 @@ if (AXHEL_HAS_SVE2)
     set(SVE2_SRC
         eltwise/eltwise-mul-mod-sve2.cpp
         eltwise/eltwise-fma-mod-sve2.cpp
+        ntt/ntt-sve.cpp
     )
 endif()
 

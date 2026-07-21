@@ -25,7 +25,7 @@ namespace axhel {
 
         svuint64_t c1 = ShiftRight128LowPart<Shift>(pg, zero, op_seg);
 
-        svuint64_t q_hat = MulHighU64SVE(pg, c1, vbarr);
+        svuint64_t q_hat = svmulh_u64_x(pg, c1, vbarr); //MulHighU64SVE(pg, c1, vbarr);
 
         svuint64_t q_mul = svmul_u64_x(pg, q_hat, vmod);
         svuint64_t z = svsub_u64_x(pg, op_seg, q_mul);

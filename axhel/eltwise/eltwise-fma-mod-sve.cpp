@@ -40,7 +40,7 @@ namespace axhel {
             MulU64ToU128SVE(pg, x, yop, &prod_hi, &prod_lo);
 
             svuint64_t c1 = ShiftRight128LowPart<Shift>(pg, prod_hi, prod_lo);
-            svuint64_t q_hat = MulHighU64SVE(pg, c1, vbarr);
+            svuint64_t q_hat = svmulh_u64_x(pg, c1, vbarr); //MulHighU64SVE(pg, c1, vbarr);
 
             svuint64_t q_mul = svmul_u64_x(pg, q_hat, vmod);
             svuint64_t z = svsub_u64_x(pg, prod_lo, q_mul);

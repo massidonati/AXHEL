@@ -8,3 +8,4 @@
 #include "axhel/eltwise/eltwise-mul-mod.hpp"
 #include "axhel/eltwise/eltwise-fma-mod.hpp"
 #include "axhel/eltwise/eltwise-reduce-mod.hpp"
+#include "axhel/ntt/ntt.hpp"

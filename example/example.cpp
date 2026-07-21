@@ -30,6 +30,37 @@ bool CheckEqual(const std::vector<uint64_t>& x,
 }
 
 
+// utility function to check congruence of calculated vs expected result in lazy-mode
+bool CheckCongruentAndRange(const std::vector<uint64_t>& result, const std::vector<uint64_t>& expected, uint64_t modulus, uint64_t upper_bound) {
+    if (result.size() != expected.size()) {
+        std::cout << "Not equal in size\n";
+        return false;
+    }
+
+    bool is_match = true;
+
+    for (size_t i = 0; i < result.size(); ++i) {
+        if (result[i] >= upper_bound) {
+            std::cout << "Value out of range at index " << i
+                      << " (" << result[i]
+                      << " >= " << upper_bound << ")\n";
+            is_match = false;
+        }
+
+        if ((result[i] % modulus) !=
+            (expected[i] % modulus)) {
+            std::cout << "Mismatch modulo " << modulus
+                      << " at index " << i
+                      << " (" << result[i]
+                      << " vs " << expected[i] << ")\n";
+            is_match = false;
+        }
+    }
+
+    return is_match;
+}
+
+
 void ExampleEltwiseVectorVectorAddMod() {
   std::cout << "Running ExampleEltwiseVectorVectorAddMod...\n";
 
@@ -257,6 +288,144 @@ void ExampleEltwiseReduceMod() {
 }
 
 
+void ExampleNTT() {
+    std::cout << "Running ExampleNTT...\n";
+
+    constexpr size_t coeff_count_power = 3;
+    constexpr uint64_t modulus = 17;
+    constexpr uint64_t twice_modulus = 2 * modulus;
+    constexpr uint64_t four_times_modulus = 4 * modulus;
+
+    /*
+     * Polynomial degree:
+     *
+     *   N = 2^3 = 8
+     */
+    const std::vector<uint64_t> original{1, 2, 3, 4, 5, 6, 7, 8};
+
+    /*
+     * Forward root powers for N = 8 and q = 17.
+     *
+     * A primitive 16-th root of unity modulo 17 is 3.
+     * The values are stored in the order expected by the
+     * Harvey forward NTT.
+     */
+    const std::vector<unipi::axhel::NTTMultiplyOperand>
+        root_powers{
+            {1,  1085102592571150095ULL},
+            {13, 14106333703424951235ULL},
+            {9,  9765923333140350855ULL},
+            {15, 16276538888567251425ULL},
+            {3,  3255307777713450285ULL},
+            {5,  5425512962855750475ULL},
+            {10, 10851025925711500950ULL},
+            {11, 11936128518282651045ULL}
+        };
+
+    /*
+     * Inverse root powers in the order expected by the
+     * Gentleman-Sande inverse NTT.
+     */
+    const std::vector<unipi::axhel::NTTMultiplyOperand>
+        inv_root_powers{
+            {0,  0},
+            {6,  6510615555426900570ULL},
+            {7,  7595718147998050665ULL},
+            {12, 13021231110853801140ULL},
+            {14, 15191436295996101330ULL},
+            {2,  2170205185142300190ULL},
+            {8,  8680820740569200760ULL},
+            {4,  4340410370284600380ULL}
+        };
+
+    /*
+     * 8^-1 mod 17 = 15.
+     */
+    const unipi::axhel::NTTMultiplyOperand inv_degree_modulo{15, 16276538888567251425ULL};
+
+    /*
+     * Expected normalized forward NTT result.
+     */
+    const std::vector<uint64_t> expected_forward{5, 0, 13, 8, 9, 11, 5, 8};
+
+    /*
+     * Normalized forward NTT.
+     */
+    {
+        std::vector<uint64_t> result = original;
+
+        unipi::axhel::NTTNegacyclicHarvey(result.data(), coeff_count_power, modulus, root_powers.data());
+
+        const bool success = CheckEqual(result, expected_forward);
+
+        std::cout << "Forward NTT: " << (success ? "PASS" : "FAIL") << '\n';
+    }
+
+    /*
+     * Normalized inverse NTT.
+     *
+     * Start from the normalized forward result and verify that
+     * the original polynomial is recovered exactly.
+     */
+    {
+        std::vector<uint64_t> result = expected_forward;
+
+        unipi::axhel::InverseNTTNegacyclicHarvey(result.data(), coeff_count_power, modulus, inv_root_powers.data(), inv_degree_modulo);
+
+        const bool success = CheckEqual(result, original);
+
+        std::cout << "Inverse NTT: " << (success ? "PASS" : "FAIL") << '\n';
+    }
+
+    /*
+     * Lazy forward NTT.
+     *
+     * The output is not necessarily equal to the normalized
+     * expected result, but each coefficient must:
+     *
+     *   - be congruent modulo q;
+     *   - lie in [0, 4q).
+     */
+    std::vector<uint64_t> forward_lazy = original;
+
+    unipi::axhel::NTTNegacyclicHarveyLazy( forward_lazy.data(), coeff_count_power, modulus, root_powers.data());
+
+    const bool forward_lazy_success = CheckCongruentAndRange(forward_lazy, expected_forward, modulus, four_times_modulus);
+
+    std::cout << "Forward NTT lazy: " << (forward_lazy_success ? "PASS" : "FAIL") << '\n';
+
+    /*
+     * Inverse lazy input must lie in [0, 2q).
+     *
+     * The forward lazy result lies in [0, 4q), so reduce it
+     * from factor 4 to factor 2 before invoking the inverse.
+     */
+    std::vector<uint64_t> inverse_lazy = forward_lazy;
+
+    for (uint64_t& value : inverse_lazy) {
+        if (value >= twice_modulus) {
+            value -= twice_modulus;
+        }
+    }
+
+    /*
+     * Lazy inverse NTT.
+     *
+     * The result must:
+     *
+     *   - be congruent to the original polynomial modulo q;
+     *   - lie in [0, 2q).
+     */
+    unipi::axhel::InverseNTTNegacyclicHarveyLazy( inverse_lazy.data(), coeff_count_power, modulus, inv_root_powers.data(), inv_degree_modulo);
+
+    const bool inverse_lazy_success = CheckCongruentAndRange( inverse_lazy, original, modulus, twice_modulus);
+
+    std::cout << "Inverse NTT lazy: " << (inverse_lazy_success ? "PASS" : "FAIL") << '\n';
+
+    std::cout << "Done running ExampleNTT\n";
+}
+
+
 
 int main() {
 
@@ -267,6 +436,7 @@ int main() {
     ExampleEltwiseMulMod();
     ExampleEltwiseFMAMod();
     ExampleEltwiseReduceMod();
+    ExampleNTT();
 
     return 0;
 }
