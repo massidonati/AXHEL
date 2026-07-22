@@ -10,10 +10,12 @@
 
 int main(void) {
     const svbool_t pg = svptrue_b64();
-    const svint64_t one = svdup_s64(1);
-    const svint64_t two = svdup_s64(2);
-    const svint64_t sum = svadd_s64_x(pg, one, two);
-    const std::int64_t result = svlastb_s64(pg, sum);
-    constexpr std::int64_t expected = 3;
-    return (result == expected) ? 0 : 1;
+    const svuint64_t one = svdup_u64(1);
+    const svuint64_t two = svdup_u64(2);
+    const svuint64_t sum = svadd_u64_x(pg, one, two);
+    const svuint64_t high = svmulh_u64_x(pg, one, two);
+    const std::uint64_t sum_result = svlastb_u64(pg, sum);
+    const std::uint64_t high_result = svlastb_u64(pg, high);
+
+    return (sum_result == 3 && high_result == 0) ? 0 : 1;
 }
