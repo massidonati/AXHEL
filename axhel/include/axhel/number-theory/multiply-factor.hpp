@@ -12,13 +12,13 @@ namespace axhel {
 class MultiplyFactor {
 public:
 
-    //@brief Compute and store the Barrett factor as floor((operand << bit_shift) / modulus)
+    /// @brief Compute and store the Barrett factor as floor((operand << bit_shift) / modulus)
     MultiplyFactor(uint64_t operand, uint64_t bit_shift, uint64_t modulus);
 
-    //@brief Return the Barrett factor
+    /// @brief Return the operand
     uint64_t Operand() const noexcept;
 
-    //@brief Return the operand
+    /// @brief Return the Barrett factor
     uint64_t BarrettFactor() const noexcept;
 
 private:

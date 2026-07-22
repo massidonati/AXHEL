@@ -1,7 +1,6 @@
 // Copyright (C) 2026 University of Pisa - Dept. of Information Engineering
 // SPDX-License-Identifier: Apache-2.0
 
-#include <arm_sve.h>
 #include <stdint.h>
 
 #include "eltwise/eltwise-fma-mod-sve.hpp"
@@ -12,6 +11,8 @@
 #include "axhel/number-theory/uint-arith.hpp"
 
 #ifdef AXHEL_HAS_SVE
+
+#include <arm_sve.h>
 
 namespace unipi {
 namespace axhel {
@@ -26,7 +27,10 @@ namespace axhel {
         uint64_t op2_red = ReduceInputNative<ModFactor>(op2, mod);
         const svuint64_t yop = svdup_n_u64(op2_red);
 
-        for(uint64_t i=0; i<n; i+=svcntd()) {
+        const uint64_t lanes = svcntd();
+
+        #pragma unroll 4
+        for(uint64_t i=0; i<n; i+=lanes) {
             svbool_t pg = svwhilelt_b64(i, n);
 
             svuint64_t x = svld1_u64(pg, op1 + i);
@@ -40,7 +44,7 @@ namespace axhel {
             MulU64ToU128SVE(pg, x, yop, &prod_hi, &prod_lo);
 
             svuint64_t c1 = ShiftRight128LowPart<Shift>(pg, prod_hi, prod_lo);
-            svuint64_t q_hat = svmulh_u64_x(pg, c1, vbarr); //MulHighU64SVE(pg, c1, vbarr);
+            svuint64_t q_hat = svmulh_u64_x(pg, c1, vbarr);
 
             svuint64_t q_mul = svmul_u64_x(pg, q_hat, vmod);
             svuint64_t z = svsub_u64_x(pg, prod_lo, q_mul);

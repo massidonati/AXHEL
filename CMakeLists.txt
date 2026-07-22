@@ -74,6 +74,16 @@ option(AXHEL_TESTING "Enables unit-tests" OFF)
 option(AXHEL_TREAT_WARNING_AS_ERROR "Treat all compile-time warnings as errors" OFF)
 set(AXHEL_CPU "native" CACHE STRING "ARM CPU target passed to the compiler through -mcpu")
 
+check_cxx_compiler_flag("-mcpu=${AXHEL_CPU}" AXHEL_CPU_FLAG_SUPPORTED)
+
+if(NOT AXHEL_CPU_FLAG_SUPPORTED)
+    message(
+        FATAL_ERROR
+        "The compiler does not support -mcpu=${AXHEL_CPU}. "
+        "Use a compiler-supported ARM CPU name or AXHEL_CPU=native."
+    )
+endif()
+
 #------------------------------------
 # Configuration summary
 #------------------------------------

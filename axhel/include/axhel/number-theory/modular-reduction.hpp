@@ -31,16 +31,16 @@ namespace axhel {
     }
 
 
-    /// @brief reduce input value from [0, ModFactor*q) to [0, q). For ModFactor = 1 this is intentionally a no-op.
+    /// @brief Reduce input value from [0, ModFactor*q) to [0, q). For ModFactor = 1 this is intentionally a no-op.
     template <int ModFactor>
     inline uint64_t ReduceInputNative(uint64_t x, uint64_t mod) noexcept {
         
-        // if x can be in [0, 4q), substract 2q
+        // if x can be in [0, 4q), subtract 2q
         if constexpr (ModFactor == 4) {
             x = ReduceModFactor4To2Native(x, 2 * mod);
         }
 
-         // if x can be in [0, 2q), substract q
+         // if x can be in [0, 2q), subtract q
         if constexpr (ModFactor >= 2) {
         x = ReduceModFactor2To1Native(x, mod);
         }
@@ -64,16 +64,16 @@ namespace axhel {
     }
 
 
-    /// @brief reduce input value from [0, ModFactor*q) to [0, q). For ModFactor = 1 this is intentionally a no-op. 
+    /// @brief Reduce input value from [0, ModFactor*q) to [0, q). For ModFactor = 1 this is intentionally a no-op. 
     template <int ModFactor>
     inline svuint64_t ReduceInputSVE(svbool_t pg, svuint64_t x, svuint64_t vmod, svuint64_t v2mod) {
 
-        // if x can be in [0, 4q), substract 2q
+        // if x can be in [0, 4q), subtract 2q
         if constexpr (ModFactor == 4) {
             x = ReduceModFactor4To2SVE(pg, x, v2mod);
         }
 
-         // if x can be in [0, 2q), substract q
+         // if x can be in [0, 2q), subtract q
         if constexpr (ModFactor >= 2) {
             x = ReduceModFactor2To1SVE(pg, x, vmod);
         }

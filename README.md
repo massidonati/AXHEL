@@ -54,7 +54,7 @@ The following software is required to build AXHEL.
 | Dependency | Requirement |
 |------------|-------------|
 | CMake | 3.13 or later |
-| Compiler | GCC 12+ or Clang 15+ |
+| Compiler | GCC 10+ or Clang 12+ |
 
 AXHEL has been developed and tested on Linux-based ARM AArch64 platforms. Support for ARM Scalable Vector Extension (SVE) is automatically detected during the CMake configuration process. 
 When supported by the target compiler and processor, the corresponding optimized kernels are enabled automatically; otherwise, AXHEL transparently falls back to the portable scalar implementation.

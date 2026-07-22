@@ -1,7 +1,6 @@
 // Copyright (C) 2026 University of Pisa - Dept. of Information Engineering
 // SPDX-License-Identifier: Apache-2.0
 
-#include <arm_sve.h>
 #include <stdint.h>
 
 #include "eltwise/eltwise-mul-mod-sve.hpp"
@@ -13,10 +12,12 @@
 
 #ifdef AXHEL_HAS_SVE
 
+#include <arm_sve.h>
+
 namespace unipi {
 namespace axhel {
 
-    //@brief SVE specialized internal kernel 
+    /// @brief SVE specialized internal kernel 
     template <int ModFactor, uint64_t Shift>
     void EltwiseMulModSVEKernel(uint64_t* res, const uint64_t* op1, const uint64_t* op2, uint64_t n, uint64_t mod, uint64_t barr_factor) {
         const svuint64_t vmod = svdup_n_u64(mod);
@@ -47,7 +48,7 @@ namespace axhel {
             svuint64_t c1 = ShiftRight128LowPart<Shift>(pg, prod_hi, prod_lo);
 
             // q_hat = high64(c1 * barr_factor)
-            svuint64_t q_hat = svmulh_u64_x(pg, c1, vbarr); //MulHighU64SVE(pg, c1, vbarr);
+            svuint64_t q_hat = svmulh_u64_x(pg, c1, vbarr); 
 
             // z = low64(product) - q_hat * modulus
             svuint64_t q_mul = svmul_u64_x(pg, q_hat, vmod);
@@ -62,7 +63,7 @@ namespace axhel {
 
 
 
-    // @brief out-of-loop disparcdispatcher to select template version with Shift known at compile-time 
+    /// @brief out-of-loop dispatchdispatcher to select template version with Shift known at compile-time 
     template <int ModFactor>
     void DispatchEltwiseMulModSVEKernel(uint64_t* res, const uint64_t* op1, const uint64_t* op2, uint64_t n, uint64_t mod, uint64_t barr_factor, uint64_t prod_right_shift) {
     #define AXHEL_DISPATCH_SHIFT(SHIFT_VALUE)                                      \

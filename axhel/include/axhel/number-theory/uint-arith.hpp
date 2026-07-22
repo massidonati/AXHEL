@@ -28,7 +28,7 @@ namespace axhel {
 
 
     /// @brief exact scalar 64x64 -> 128 multiplication
-    inline void MultiplyUInt64(uint64_t x, uint64_t y, uint64_t* hi, uint64_t* lo) {
+    inline void MultiplyUInt64(uint64_t x, uint64_t y, uint64_t* hi, uint64_t* lo) noexcept {
         const uint128_t prod = static_cast<uint128_t>(x) * static_cast<uint128_t>(y);
 
         *lo = static_cast<uint64_t>(prod);
@@ -45,7 +45,7 @@ namespace axhel {
 
 
     /// @brief Multiply by a precomputed modular operand floor(multiplier * 2^64 / modulus). The returned result is a lazy modular product.
-    inline uint64_t MultiplyUIntModLazy(uint64_t value, uint64_t multiplier, uint64_t multiplier_quotient, uint64_t modulus) {
+    inline uint64_t MultiplyUIntModLazy(uint64_t value, uint64_t multiplier, uint64_t multiplier_quotient, uint64_t modulus) noexcept {
         const uint64_t quotient = MulHighU64(value, multiplier_quotient);
 
         return value * multiplier - quotient * modulus;
@@ -55,6 +55,7 @@ namespace axhel {
     /// @brief Computes the precomputed Shoup quotient  ⌊operand · 2^64 / modulus⌋ for modular multiplication.
     inline uint64_t ComputeShoupQuotient(uint64_t operand, uint64_t modulus) noexcept {
         const uint128_t numerator = static_cast<uint128_t>(operand) << 64;
+        
         return static_cast<uint64_t>(numerator / modulus);
     }
 

@@ -3,6 +3,7 @@
 
 #pragma once
 
+#include "axhel/util/defines.hpp"
 #include "axhel/eltwise/eltwise-add-mod.hpp"
 #include "axhel/eltwise/eltwise-sub-mod.hpp"
 #include "axhel/eltwise/eltwise-mul-mod.hpp"

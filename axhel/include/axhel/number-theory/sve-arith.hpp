@@ -3,10 +3,11 @@
 
 #pragma once
 
+#include <stdint.h>
+
 #ifdef AXHEL_HAS_SVE
 
 #include <arm_sve.h>
-#include <stdint.h>
 
 namespace unipi {
 namespace axhel {
