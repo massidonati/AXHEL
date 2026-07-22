@@ -1,6 +1,6 @@
 // Copyright (C) University of Pisa - Dept. of Information Engineering
-// License-Identifier: Apache-2.0
-// Author: M.Donati
+// SPDX-License-Identifier: Apache-2.0
+
 
 #include <cstdint>
 #include <iostream>
