@@ -7,8 +7,10 @@
 #include "axhel/number-theory/multiply-factor.hpp"
 #include "axhel/number-theory/uint-arith.hpp"
 #include "eltwise/eltwise-mul-mod-native.hpp"
+
+#ifdef AXHEL_HAS_SVE
 #include "eltwise/eltwise-mul-mod-sve.hpp"
-#include "eltwise/eltwise-mul-mod-sve2.hpp"
+#endif
 
 namespace unipi {
 namespace axhel {
@@ -64,9 +66,7 @@ namespace axhel {
     
     template <int ModFactor>
     inline void EltwiseMulModDispatch(uint64_t* res, const uint64_t* op1, const uint64_t* op2, uint64_t n, uint64_t mod) {
-        #if defined(AXHEL_HAS_SVE2)
-            EltwiseMulModSVE2<ModFactor>(res, op1, op2, n, mod);
-        #elif defined(AXHEL_HAS_SVE)
+        #ifdef AXHEL_HAS_SVE
             EltwiseMulModSVE<ModFactor>(res, op1, op2, n, mod);
         #else
             EltwiseMulModNative<ModFactor>(res, op1, op2, n, mod);
@@ -89,47 +89,6 @@ namespace axhel {
                 EltwiseMulModDispatch<4>(res, op1, op2, n, mod);
                 break;
         }
-/*
-        #if defined(AXHEL_HAS_SVE2)
-            switch(mod_factor) {
-                case 1:
-                    EltwiseMulModSVE2<1>(result, operand1, operand2, n, modulus);
-                break;
-                case 2:
-                    EltwiseMulModSVE2<2>(result, operand1, operand2, n, modulus);
-                break;
-                case 4:
-                    EltwiseMulModSVE2<4>(result, operand1, operand2, n, modulus);
-                break;
-            }
-        #elif defined(AXHEL_HAS_SVE)
-            switch(mod_factor) {
-                case 1:
-                    EltwiseMulModSVE<1>(result, operand1, operand2, n, modulus);
-                break;
-                case 2:
-                    EltwiseMulModSVE<2>(result, operand1, operand2, n, modulus);
-                break;
-                case 4:
-                    EltwiseMulModSVE<4>(result, operand1, operand2, n, modulus);
-                break;
-            }
-        #else
-            switch(mod_factor) {
-                case 1:
-                    EltwiseMulModNative<1>(result, operand1, operand2, n, modulus);
-                break;
-                case 2:
-                    EltwiseMulModNative<2>(result, operand1, operand2, n, modulus);
-                break;
-                case 4:
-                    EltwiseMulModNative<4>(result, operand1, operand2, n, modulus);
-                break;
-            }
-        #endif
-        
-        return;
-*/
     }
 
     template void EltwiseMulModNative<1>(uint64_t*, const uint64_t*, const uint64_t*, uint64_t, uint64_t);

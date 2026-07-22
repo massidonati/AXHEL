@@ -3,7 +3,7 @@
 
 #include "ntt/ntt-sve.hpp"
 
-#if defined(AXHEL_HAS_SVE) || defined(AXHEL_HAS_SVE2)
+#ifdef AXHEL_HAS_SVE
 
 #include "axhel/number-theory/modular-reduction.hpp"
 #include "axhel/number-theory/sve-arith.hpp"

@@ -7,7 +7,6 @@
 #cmakedefine AXHEL_USE_CLANG
 
 #cmakedefine AXHEL_HAS_SVE
-#cmakedefine AXHEL_HAS_SVE2
 
 #cmakedefine AXHEL_DEBUG
 

@@ -7,8 +7,10 @@
 #include "axhel/number-theory/multiply-factor.hpp"
 #include "axhel/number-theory/uint-arith.hpp"
 #include "eltwise/eltwise-fma-mod-native.hpp"
+
+#ifdef AXHEL_HAS_SVE
 #include "eltwise/eltwise-fma-mod-sve.hpp"
-#include "eltwise/eltwise-fma-mod-sve2.hpp"
+#endif
 
 namespace unipi {
 namespace axhel {
@@ -77,9 +79,7 @@ namespace axhel {
 
     template <int ModFactor>
     inline void EltwiseFMAModDispatch(uint64_t* res, const uint64_t* op1, uint64_t op2, const uint64_t* op3, uint64_t n, uint64_t mod) {
-        #if defined(AXHEL_HAS_SVE2)
-            EltwiseFMAModSVE2<ModFactor>(res, op1, op2, op3, n, mod);
-        #elif defined(AXHEL_HAS_SVE)
+        #ifdef AXHEL_HAS_SVE
             EltwiseFMAModSVE<ModFactor>(res, op1, op2, op3, n, mod);
         #else
             EltwiseFMAModNative<ModFactor>(res, op1, op2, op3, n, mod);

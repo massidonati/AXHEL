@@ -4,6 +4,7 @@
 build/
 build*/
 cmake-build*/
+example/build/
 out/
 bin/
 
@@ -25,7 +26,7 @@ CPackSourceConfig.cmake
 # ============================================================
 # Generated configuration files
 # ============================================================
-# axhel/include/axhel/util/defines.hpp
+axhel/include/axhel/util/defines.hpp
 cmake/axhel-*/AXHELConfig.cmake
 cmake/axhel-*/AXHELConfigVersion.cmake
 

@@ -72,7 +72,7 @@ namespace axhel {
     void EltwiseAddMod(uint64_t* res, const uint64_t* op1, const uint64_t* op2, uint64_t n, uint64_t mod) {
         //TODO: check
        
-        #if defined(AXHEL_HAS_SVE) || defined(AXHEL_HAS_SVE2)
+        #ifdef AXHEL_HAS_SVE
         EltwiseAddModSVE(res,op1,op2,n,mod);
         #else
         EltwiseAddModNative(res,op1,op2,n,mod);
@@ -83,7 +83,7 @@ namespace axhel {
     void EltwiseAddMod(uint64_t* res, const uint64_t* op1, const uint64_t op2, uint64_t n, uint64_t mod) {
          //TODO: check
 
-        #if defined(AXHEL_HAS_SVE) || defined(AXHEL_HAS_SVE2)
+        #ifdef AXHEL_HAS_SVE
         EltwiseAddModSVE(res,op1,op2,n,mod);
         #else
         EltwiseAddModNative(res,op1,op2,n,mod);

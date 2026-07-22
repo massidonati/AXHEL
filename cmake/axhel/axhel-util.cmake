@@ -4,23 +4,23 @@
 # Check if source can be compiled and run 
 function(axhel_check_compile_flag SOURCE_FILE OUTPUT_FLAG)
     if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-        set(NATIVE_COMPILE_DEFINITIONS "-mcpu=native") #"-march=native"
+        set(NATIVE_COMPILE_OPTIONS "-mcpu=native")
     else()
         message(FATAL_ERROR "Compiler not supported: ${CMAKE_CXX_COMPILER_ID}")
     endif()
 
     try_run(CAN_RUN CAN_COMPILE ${CMAKE_BINARY_DIR}
         "${SOURCE_FILE}"
-        COMPILE_DEFINITIONS ${NATIVE_COMPILE_DEFINITIONS}
+        COMPILE_DEFINITIONS ${NATIVE_COMPILE_OPTIONS}
         OUTPUT_VARIABLE TRY_COMPILE_OUTPUT
     )
-    if (CAN_COMPILE AND CAN_RUN STREQUAL 0)
+    if (CAN_COMPILE AND CAN_RUN EQUAL 0)
         message(STATUS "Setting ${OUTPUT_FLAG}")
         add_compile_definitions(${OUTPUT_FLAG})
         set(${OUTPUT_FLAG} 1 PARENT_SCOPE)
     else()
-        set(${OUTPUT_FLAG} 0 PARENT_SCOPE)
         message(STATUS "Compile flag not found: ${OUTPUT_FLAG}")
+        set(${OUTPUT_FLAG} 0 PARENT_SCOPE)
     endif()    
 endfunction()
 

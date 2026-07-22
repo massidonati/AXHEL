@@ -10,7 +10,7 @@
 #include "ntt/ntt-native.hpp"
 #include "ntt/ntt-internal.hpp"
 
-#if defined(AXHEL_HAS_SVE) || defined(AXHEL_HAS_SVE2)
+#ifdef AXHEL_HAS_SVE
 #include "ntt/ntt-sve.hpp"
 #endif
 
@@ -167,7 +167,7 @@ namespace axhel {
     * Public forward-lazy dispatcher.
     */
     void NTTNegacyclicHarveyLazy(uint64_t *operand, size_t coeff_count_power, uint64_t modulus, const NTTMultiplyOperand *root_powers) {
-        #if defined(AXHEL_HAS_SVE) || defined(AXHEL_HAS_SVE2)
+        #ifdef AXHEL_HAS_SVE
         NTTNegacyclicHarveyLazySVE(operand, coeff_count_power, modulus, root_powers);
         #else
         NTTNegacyclicHarveyLazyNative(operand, coeff_count_power, modulus, root_powers);
@@ -195,8 +195,8 @@ namespace axhel {
     *
     */
     void InverseNTTNegacyclicHarveyLazy(uint64_t *operand, size_t coeff_count_power, uint64_t modulus, const NTTMultiplyOperand *inv_root_powers, NTTMultiplyOperand inv_degree_modulo) {
-         #if defined(AXHEL_HAS_SVE) || defined(AXHEL_HAS_SVE2)
-        InverseNTTNegacyclicHarveyLazySVE(operand, coeff_count_power, modulus, inv_root_powers, inv_degree_modulo);
+         #ifdef AXHEL_HAS_SVE
+         InverseNTTNegacyclicHarveyLazySVE(operand, coeff_count_power, modulus, inv_root_powers, inv_degree_modulo);
          #else
         InverseNTTNegacyclicHarveyLazyNative(operand, coeff_count_power, modulus, inv_root_powers, inv_degree_modulo);
         #endif

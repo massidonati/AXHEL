@@ -11,7 +11,7 @@
 #include "axhel/number-theory/sve-arith.hpp"
 #include "axhel/number-theory/uint-arith.hpp"
 
-#if defined(AXHEL_HAS_SVE) || defined(AXHEL_HAS_SVE2)
+#ifdef AXHEL_HAS_SVE
 
 namespace unipi {
 namespace axhel {

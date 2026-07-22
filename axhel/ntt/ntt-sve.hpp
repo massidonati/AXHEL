@@ -8,7 +8,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#if defined(AXHEL_HAS_SVE) || defined(AXHEL_HAS_SVE2)
+#ifdef AXHEL_HAS_SVE
 
 namespace unipi {
 namespace axhel {

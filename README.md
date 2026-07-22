@@ -2,11 +2,10 @@
 ![C++17](https://img.shields.io/badge/C%2B%2B-17-blue.svg)
 ![ARM](https://img.shields.io/badge/Architecture-AArch64-green.svg)
 ![SVE](https://img.shields.io/badge/ARM-SVE-success.svg)
-![SVE2](https://img.shields.io/badge/ARM-SVE2-success.svg)
 
 # ARM aXceleration for Homomorphic Encryption Library
 
-AXHEL is an open-source C++ library providing optimized modular arithmetic kernels for homomorphic encryption on ARM processors. AXHEL accelerates the arithmetic primitives commonly used by homomorphic encryption libraries by exploiting ARM SVE and SVE2 vector extensions while maintaining portable scalar implementations.
+AXHEL is an open-source C++ library providing optimized modular arithmetic kernels for homomorphic encryption on ARM processors. AXHEL accelerates the arithmetic primitives commonly used by homomorphic encryption libraries by exploiting ARM Scalable Vector Extension (SVE) while maintaining portable scalar implementations.
 
 AXHEL is designed as a lightweight acceleration layer that can be integrated into existing homomorphic encryption frameworks to improve the performance of modular arithmetic on modern AArch64 platforms.
 
@@ -24,19 +23,21 @@ of modular arithmetic operations on vectors of 64-bit coefficients. Since these 
 they represent one of the primary computational bottlenecks of practical HE implementations.
 
 AXHEL (ARM aXceleration for Homomorphic Encryption Library) is an open-source C++ library that provides optimized implementations of these arithmetic kernels 
-for ARM AArch64 processors. By exploiting ARM SVE and SVE2 vector extensions, AXHEL accelerates the low-level modular arithmetic primitives that constitute 
+for ARM AArch64 processors. By exploiting ARM Scalable Vector Extension (SVE), AXHEL accelerates the low-level modular arithmetic primitives that constitute 
 the building blocks of higher-level homomorphic encryption operations, while preserving portable scalar implementations for maximum compatibility.
 
 ## Features
 
 The library covers the following kernels:
-| Kernel | Scalar | SVE | SVE2 |
-|:------- |:------:|:---:|:----:|
-| Element-wise modular addition | ✓ | ✓ | ✓ |
-| Element-wise modular subtraction | ✓ | ✓ | ✓ |
-| Element-wise modular multiplication | ✓ | ✓ | ✓ |
-| Modular reduction | ✓ | ✓ | ✓ |
-| Fused multiply-add (FMA) | ✓ | ✓ | ✓ |
+| Kernel | Scalar | SVE |
+|---|---:|---:|
+| EltwiseAddMod | ✓ | ✓ |
+| EltwiseSubMod | ✓ | ✓ |
+| EltwiseMulMod | ✓ | ✓ |
+| EltwiseFMAMod | ✓ | ✓ |
+| EltwiseReduceMod | ✓ | ✓ |
+| NTT | ✓ | ✓ |
+| INTT | ✓ | ✓ |
 
 Each kernel is available through multiple implementations sharing the same public API. During the CMake configuration phase, AXHEL automatically detects the capabilities 
 of the target compiler and processor and selects the most appropriate implementation. This approach enables architecture-specific optimizations while preserving portability. 
@@ -55,7 +56,7 @@ The following software is required to build AXHEL.
 | CMake | 3.13 or later |
 | Compiler | GCC 12+ or Clang 15+ |
 
-AXHEL has been developed and tested on Linux-based ARM AArch64 platforms. Support for ARM SVE and ARM SVE2 is automatically detected during the CMake configuration process. 
+AXHEL has been developed and tested on Linux-based ARM AArch64 platforms. Support for ARM Scalable Vector Extension (SVE) is automatically detected during the CMake configuration process. 
 When supported by the target compiler and processor, the corresponding optimized kernels are enabled automatically; otherwise, AXHEL transparently falls back to the portable scalar implementation.
 
 ### Compile-time options

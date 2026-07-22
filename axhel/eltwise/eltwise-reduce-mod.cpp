@@ -91,7 +91,7 @@ namespace axhel {
     void EltwiseReduceMod(uint64_t* res, const uint64_t* op, uint64_t n, uint64_t mod, uint64_t in_mod_factor, uint64_t out_mod_factor) {
         //TODO: check
 
-        #if defined(AXHEL_HAS_SVE) || defined(AXHEL_HAS_SVE2)
+        #ifdef AXHEL_HAS_SVE
         EltwiseReduceModSVE(res,op,n,mod,in_mod_factor,out_mod_factor);
         #else
         EltwiseReduceModNative(res,op,n,mod,in_mod_factor,out_mod_factor);

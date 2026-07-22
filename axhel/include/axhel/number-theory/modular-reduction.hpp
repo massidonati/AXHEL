@@ -6,7 +6,7 @@
 
 #include <stdint.h>
 
-#if defined(AXHEL_HAS_SVE) || defined(AXHEL_HAS_SVE2)
+#ifdef AXHEL_HAS_SVE
 #include <arm_sve.h>
 #endif
 
@@ -48,7 +48,7 @@ namespace axhel {
         return x;
     }
 
-    #if defined(AXHEL_HAS_SVE) || defined(AXHEL_HAS_SVE2)
+    #ifdef AXHEL_HAS_SVE
 
 
     /// @brief Reduce lane-wise values from [0, 4q) to [0, 2q).
