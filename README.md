@@ -67,6 +67,7 @@ AXHEL supports the following library-specific compile-time options.
 |--------------|--------|:-------:|-------------|
 | `AXHEL_SHARED_LIB` | `ON`, `OFF` | `OFF` | Build AXHEL as a shared library instead of a static library. |
 | `AXHEL_TREAT_WARNING_AS_ERROR` | `ON`, `OFF` | `OFF` | Treat compiler warnings as errors. |
+| `AXHEL_CPU` | Any CPU name supported by the compiler, e.g. `native`, `neoverse-v1`, `neoverse-v2` | `native` | Select the target ARM CPU passed to the compiler through `-mcpu=<value>`. |
 
 In addition, AXHEL supports the standard CMake configuration variables.
 
@@ -93,6 +94,12 @@ For example, to use a non-default installation directory, configure the build wi
 
 ```bash
 cmake -S . -B build -DCMAKE_INSTALL_PREFIX=/path/to/install
+```
+
+For example, to build AXHEL for the a Neoverse V1 ARM CPU:
+
+```bash
+cmake -S . -B build -DAXHEL_CPU=neoverse-v1
 ```
 
 Build AXHEL by running:

@@ -4,7 +4,7 @@
 # Check if source can be compiled and run 
 function(axhel_check_compile_flag SOURCE_FILE OUTPUT_FLAG)
     if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-        set(NATIVE_COMPILE_OPTIONS "-mcpu=native")
+        set(NATIVE_COMPILE_OPTIONS "-mcpu=${AXHEL_CPU}")
     else()
         message(FATAL_ERROR "Compiler not supported: ${CMAKE_CXX_COMPILER_ID}")
     endif()

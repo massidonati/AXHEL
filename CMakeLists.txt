@@ -72,6 +72,7 @@ option(AXHEL_BENCHMARK "Enable benchmarking" OFF)
 option(AXHEL_SHARED_LIB "Generate a shared library" OFF)
 option(AXHEL_TESTING "Enables unit-tests" OFF)
 option(AXHEL_TREAT_WARNING_AS_ERROR "Treat all compile-time warnings as errors" OFF)
+set(AXHEL_CPU "native" CACHE STRING "ARM CPU target passed to the compiler through -mcpu")
 
 #------------------------------------
 # Configuration summary
@@ -80,7 +81,8 @@ option(AXHEL_TREAT_WARNING_AS_ERROR "Treat all compile-time warnings as errors" 
 message(STATUS "CMAKE_BUILD_TYPE:              ${CMAKE_BUILD_TYPE}")
 message(STATUS "CMAKE_C_COMPILER:              ${CMAKE_C_COMPILER}")
 message(STATUS "CMAKE_CXX_COMPILER:            ${CMAKE_CXX_COMPILER}")
-message(STATUS "AXHEL_BENCHMARK:               ${AXHEL_BENCHMARK}")
+message(STATUS "AXHEL_CPU:                     ${AXHEL_CPU}")
+#message(STATUS "AXHEL_BENCHMARK:               ${AXHEL_BENCHMARK}")
 message(STATUS "AXHEL_DEBUG:                   ${AXHEL_DEBUG}")
 #message(STATUS "AXHEL_DOCS:                    ${AXHEL_DOCS}")
 message(STATUS "AXHEL_SHARED_LIB:              ${AXHEL_SHARED_LIB}")

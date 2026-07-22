@@ -93,7 +93,7 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
             -Wshadow 
             -Wno-sign-conversion
             -Wno-unknown-pragmas 
-            -mcpu=native 
+            "-mcpu=${AXHEL_CPU}"
             -fomit-frame-pointer
             -Wno-implicit-int-conversion
     )
