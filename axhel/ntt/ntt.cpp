@@ -2,11 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "axhel/ntt/ntt.hpp"
-
 #include "axhel/eltwise/eltwise-reduce-mod.hpp"
 #include "axhel/number-theory/modular-reduction.hpp"
 #include "axhel/number-theory/uint-arith.hpp"
-
+#include "axhel/util/compiler.hpp"
 #include "ntt/ntt-native.hpp"
 #include "ntt/ntt-internal.hpp"
 
@@ -39,10 +38,8 @@ namespace axhel {
         size_t m = 1;
         size_t gap = coeff_count >> 1;
 
-        while (m < coeff_count)
-        {
-            for (size_t i = 0; i < m; ++i)
-            {
+        while (m < coeff_count) {
+            for (size_t i = 0; i < m; ++i) {
                 /*
                 * SEAL's forward root table is stored in bit-reversed
                 * order. At stage m, roots are at indices:
@@ -54,8 +51,8 @@ namespace axhel {
                 uint64_t *x_ptr = operand + block_start;
                 uint64_t *y_ptr = x_ptr + gap;
 
-                for (size_t j = 0; j < gap; ++j)
-                {
+                AXHEL_UNROLL(4)
+                for (size_t j = 0; j < gap; ++j) {
                     detail::ForwardButterflyNative(x_ptr[j], y_ptr[j], root, modulus, twice_modulus);
                 }
             }
@@ -89,17 +86,15 @@ namespace axhel {
         * The final stage is specialized because it also incorporates
         * multiplication by n^{-1}.
         */
-        while (m > 1)
-        {
-            for (size_t i = 0; i < m; ++i)
-            {
+        while (m > 1) {
+            for (size_t i = 0; i < m; ++i) {
                 const NTTMultiplyOperand &inv_root = inv_root_powers[root_index++];
                 const size_t block_start = i * (gap << 1);
                 uint64_t *x_ptr = operand + block_start;
                 uint64_t *y_ptr =  x_ptr + gap;
 
-                for (size_t j = 0; j < gap; ++j)
-                {
+                AXHEL_UNROLL(4)
+                for (size_t j = 0; j < gap; ++j) {
                     detail::InverseButterflyNative(x_ptr[j], y_ptr[j], inv_root, modulus, twice_modulus);
                 }
             }
@@ -147,8 +142,8 @@ namespace axhel {
 
         uint64_t *y_ptr = operand + gap;
 
-        for (size_t j = 0; j < gap; ++j)
-        {
+        AXHEL_UNROLL(4)
+        for (size_t j = 0; j < gap; ++j) {
             const uint64_t guarded_x = ReduceModFactor4To2Native(x_ptr[j], twice_modulus);
             const uint64_t y = y_ptr[j];
             const uint64_t sum = guarded_x + y;

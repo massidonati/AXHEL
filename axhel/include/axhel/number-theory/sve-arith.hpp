@@ -4,6 +4,7 @@
 #pragma once
 
 #include <stdint.h>
+#include "axhel/util/defines.hpp"
 
 #ifdef AXHEL_HAS_SVE
 

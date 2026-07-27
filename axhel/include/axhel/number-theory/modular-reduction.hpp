@@ -6,6 +6,8 @@
 
 #include <stdint.h>
 
+#include "axhel/util/defines.hpp"
+
 #ifdef AXHEL_HAS_SVE
 #include <arm_sve.h>
 #endif

@@ -3,10 +3,11 @@
 
 #pragma once
 
-#include "axhel/ntt/ntt.hpp"
-
 #include <stddef.h>
 #include <stdint.h>
+#include "axhel/util/defines.hpp"
+#include "axhel/ntt/ntt.hpp"
+
 
 #ifdef AXHEL_HAS_SVE
 

@@ -1,17 +1,18 @@
 // Copyright (C) 2026 University of Pisa - Dept. of Information Engineering
 // SPDX-License-Identifier: Apache-2.0
 
-#include <arm_sve.h>
 #include <stdint.h>
-
 #include "eltwise/eltwise-reduce-mod-sve.hpp"
-
 #include "axhel/number-theory/modular-reduction.hpp"
 #include "axhel/number-theory/multiply-factor.hpp"
 #include "axhel/number-theory/sve-arith.hpp"
 #include "axhel/number-theory/uint-arith.hpp"
+#include "axhel/util/compiler.hpp"
+
 
 #ifdef AXHEL_HAS_SVE
+
+#include <arm_sve.h>
 
 namespace unipi {
 namespace axhel {
@@ -25,7 +26,7 @@ namespace axhel {
 
         svuint64_t c1 = ShiftRight128LowPart<Shift>(pg, zero, op_seg);
 
-        svuint64_t q_hat = svmulh_u64_x(pg, c1, vbarr); //MulHighU64SVE(pg, c1, vbarr);
+        svuint64_t q_hat = svmulh_u64_x(pg, c1, vbarr); 
 
         svuint64_t q_mul = svmul_u64_x(pg, q_hat, vmod);
         svuint64_t z = svsub_u64_x(pg, op_seg, q_mul);
@@ -37,15 +38,18 @@ namespace axhel {
 
 
     void DispatchBarrettReduceUInt64SVEKernel(uint64_t* res, const uint64_t* op, uint64_t n, uint64_t mod, uint64_t barr_factor, uint64_t prod_right_shift) {
+        const uint64_t lanes = svcntd();
+
     #define AXHEL_DISPATCH_SHIFT(SHIFT_VALUE)                                      \
         case SHIFT_VALUE:                                                          \
-            for(uint64_t i=0; i<n; i+=svcntd()) {                                  \
+            AXHEL_UNROLL(4)                                                        \
+            for(uint64_t i=0; i<n; i+=lanes) {                                     \
                 svbool_t pg = svwhilelt_b64(i, n);                                 \
                 svuint64_t op_seg = svld1_u64(pg, op + i);                         \
                 svuint64_t res_seg = BarrettReduceUInt64SVEKernel<SHIFT_VALUE>(    \
                     pg, op_seg, mod, barr_factor);                                 \
                 svst1_u64(pg, res + i, res_seg);                                   \
-            }                                                                       \
+            }                                                                      \
             break
 
         switch(prod_right_shift) {
@@ -116,10 +120,11 @@ namespace axhel {
 
 
     void EltwiseReduceModSVE(uint64_t* res, const uint64_t* op, uint64_t n, uint64_t mod, uint64_t in_mod_factor, uint64_t out_mod_factor) {
-        //TODO: check
+
+        const uint64_t lanes = svcntd();
 
         if(in_mod_factor == 1) {
-            for(uint64_t i=0; i<n; i+=svcntd()){
+            for(uint64_t i=0; i<n; i+=lanes){
                 svbool_t pg = svwhilelt_b64(i, n);
                 svuint64_t res_seg = svld1_u64(pg, op + i);
                 svst1_u64(pg, res + i, res_seg);
@@ -128,7 +133,7 @@ namespace axhel {
         }
 
         if(out_mod_factor == 2 && in_mod_factor <= 2) {
-            for(uint64_t i=0; i<n; i+=svcntd()){
+            for(uint64_t i=0; i<n; i+=lanes){
                 svbool_t pg = svwhilelt_b64(i, n);
                 svuint64_t res_seg = svld1_u64(pg, op + i);
                 svst1_u64(pg, res + i, res_seg);
@@ -139,11 +144,9 @@ namespace axhel {
         if(in_mod_factor == 2 || in_mod_factor == 4) {
             const uint64_t target = out_mod_factor * mod;
 
-            for(uint64_t i=0; i<n; i+=svcntd()){
+            for(uint64_t i=0; i<n; i+=lanes){
                 svbool_t pg = svwhilelt_b64(i, n);
-
                 svuint64_t res_seg = svld1_u64(pg, op + i);
-
                 svbool_t ge_cond = svcmpge_n_u64(pg, res_seg, target);
 
                 while(svptest_any(pg, ge_cond)) {

@@ -3,14 +3,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "axhel/eltwise/eltwise-mul-mod.hpp" 
+#include "eltwise/eltwise-mul-mod-sve.hpp"
 #include "axhel/number-theory/modular-reduction.hpp"
 #include "axhel/number-theory/multiply-factor.hpp"
 #include "axhel/number-theory/uint-arith.hpp"
 #include "eltwise/eltwise-mul-mod-native.hpp"
-
-#ifdef AXHEL_HAS_SVE
-#include "eltwise/eltwise-mul-mod-sve.hpp"
-#endif
+#include "axhel/util/compiler.hpp"
 
 namespace unipi {
 namespace axhel {
@@ -18,8 +16,6 @@ namespace axhel {
 
     template <int ModFactor>
     void EltwiseMulModNative(uint64_t* res, const uint64_t* op1, const uint64_t* op2, uint64_t n, uint64_t mod) {
-        
-        //TODO: check
 
         // Barrett params
         constexpr int64_t beta = -2;
@@ -32,6 +28,7 @@ namespace axhel {
         // Barrett factor mu
         const uint64_t barr_factor = MultiplyFactor(uint64_t(1) << (ceil_log_mod + alpha - 64), 64, mod).BarrettFactor();
 
+        AXHEL_UNROLL(4)
         for (uint64_t i = 0; i < n; ++i) {
             uint64_t prod_hi;
             uint64_t prod_lo;

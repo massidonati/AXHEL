@@ -2,13 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include <stdint.h>
-
 #include "eltwise/eltwise-mul-mod-sve.hpp"
-
 #include "axhel/number-theory/modular-reduction.hpp"
 #include "axhel/number-theory/multiply-factor.hpp"
 #include "axhel/number-theory/sve-arith.hpp"
 #include "axhel/number-theory/uint-arith.hpp"
+#include "axhel/util/compiler.hpp"
 
 #ifdef AXHEL_HAS_SVE
 
@@ -20,13 +19,14 @@ namespace axhel {
     /// @brief SVE specialized internal kernel 
     template <int ModFactor, uint64_t Shift>
     void EltwiseMulModSVEKernel(uint64_t* res, const uint64_t* op1, const uint64_t* op2, uint64_t n, uint64_t mod, uint64_t barr_factor) {
+        
         const svuint64_t vmod = svdup_n_u64(mod);
         const svuint64_t v2mod = svdup_n_u64(2 * mod);
         const svuint64_t vbarr = svdup_n_u64(barr_factor);
 
         const uint64_t lanes = svcntd();
 
-        #pragma unroll 4
+        AXHEL_UNROLL(4)
         for (uint64_t i = 0; i < n; i += lanes) {
             svbool_t pg = svwhilelt_b64(i, n);
 
@@ -141,9 +141,7 @@ namespace axhel {
     // @brief SVE-optimized multiply
     template <int ModFactor>
     void EltwiseMulModSVE(uint64_t* res, const uint64_t* op1, const uint64_t* op2, uint64_t n, uint64_t mod){
-        
-        //TODO: check
-        
+
         // Barrett params
         constexpr int64_t beta = -2;
         constexpr int64_t alpha = 62; // alpha - beta = 64

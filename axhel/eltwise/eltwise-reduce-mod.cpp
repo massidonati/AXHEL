@@ -3,13 +3,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "axhel/eltwise/eltwise-reduce-mod.hpp"
-
 #include "axhel/number-theory/modular-reduction.hpp"
 #include "axhel/number-theory/multiply-factor.hpp"
 #include "axhel/number-theory/uint-arith.hpp"
-
 #include "eltwise/eltwise-reduce-mod-native.hpp"
 #include "eltwise/eltwise-reduce-mod-sve.hpp"
+#include "axhel/util/compiler.hpp"
 
 namespace unipi {
 namespace axhel {
@@ -28,7 +27,6 @@ namespace axhel {
 
 
     void EltwiseReduceModNative(uint64_t* res, const uint64_t* op, uint64_t n, uint64_t mod, uint64_t in_mod_factor, uint64_t out_mod_factor) {
-        //TODO: check
 
         if(in_mod_factor == 1) {
             for(uint64_t i=0; i<n; ++i){
@@ -76,6 +74,7 @@ namespace axhel {
 
             const uint64_t barr_factor =  MultiplyFactor(uint64_t(1) << (ceil_log_mod + alpha - 64), 64, mod).BarrettFactor();
 
+            AXHEL_UNROLL(4)
             for(uint64_t i=0; i<n; ++i){
                 *res = BarrettReduceUInt64Native(*op, mod, barr_factor, prod_right_shift);
 
@@ -89,8 +88,6 @@ namespace axhel {
 
 
     void EltwiseReduceMod(uint64_t* res, const uint64_t* op, uint64_t n, uint64_t mod, uint64_t in_mod_factor, uint64_t out_mod_factor) {
-        //TODO: check
-
         #ifdef AXHEL_HAS_SVE
         EltwiseReduceModSVE(res,op,n,mod,in_mod_factor,out_mod_factor);
         #else

@@ -3,22 +3,19 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "axhel/eltwise/eltwise-fma-mod.hpp"
+#include "eltwise/eltwise-fma-mod-sve.hpp"
 #include "axhel/number-theory/modular-reduction.hpp"
 #include "axhel/number-theory/multiply-factor.hpp"
 #include "axhel/number-theory/uint-arith.hpp"
 #include "eltwise/eltwise-fma-mod-native.hpp"
+#include "axhel/util/compiler.hpp"
 
-#ifdef AXHEL_HAS_SVE
-#include "eltwise/eltwise-fma-mod-sve.hpp"
-#endif
 
 namespace unipi {
 namespace axhel {
 
     template <int ModFactor>
     void EltwiseFMAModNative(uint64_t* res, const uint64_t* op1, uint64_t op2, const uint64_t* op3, uint64_t n, uint64_t mod) {
-       
-        //TODO: check
 
          // Barrett params
         constexpr int64_t beta = -2;
@@ -34,6 +31,7 @@ namespace axhel {
         // modular reduction of input
         const uint64_t op2_red = ReduceInputNative<ModFactor>(op2, mod);
 
+        AXHEL_UNROLL(4)
         for(uint64_t i=0; i<n; ++i) {
             uint64_t prod_hi;
             uint64_t prod_lo;
@@ -89,8 +87,6 @@ namespace axhel {
 
     void EltwiseFMAMod(uint64_t* res, const uint64_t* op1, uint64_t op2, const uint64_t* op3, uint64_t n, uint64_t mod, uint64_t mod_factor) {
         
-        //TODO: check
-
         switch(mod_factor) {
             case 1:
                 EltwiseFMAModDispatch<1>(res, op1, op2, op3, n, mod);

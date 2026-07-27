@@ -2,13 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include <stdint.h>
-
 #include "eltwise/eltwise-fma-mod-sve.hpp"
-
 #include "axhel/number-theory/modular-reduction.hpp"
 #include "axhel/number-theory/multiply-factor.hpp"
 #include "axhel/number-theory/sve-arith.hpp"
 #include "axhel/number-theory/uint-arith.hpp"
+#include "axhel/util/compiler.hpp"
 
 #ifdef AXHEL_HAS_SVE
 
@@ -29,7 +28,7 @@ namespace axhel {
 
         const uint64_t lanes = svcntd();
 
-        #pragma unroll 4
+        AXHEL_UNROLL(4)
         for(uint64_t i=0; i<n; i+=lanes) {
             svbool_t pg = svwhilelt_b64(i, n);
 
@@ -146,8 +145,6 @@ namespace axhel {
 
     template <int ModFactor>
     void EltwiseFMAModSVE(uint64_t* res, const uint64_t* op1, uint64_t op2, const uint64_t* op3, uint64_t n, uint64_t mod) {
-        
-        //TODO: check
         
         // Barrett params
         constexpr int64_t beta = -2;

@@ -2,18 +2,18 @@
 // SPDX-License-Identifier: Apache-2.0
 
 #include "ntt/ntt-sve.hpp"
-
-#ifdef AXHEL_HAS_SVE
-
 #include "axhel/number-theory/modular-reduction.hpp"
 #include "axhel/number-theory/sve-arith.hpp"
 #include "axhel/number-theory/uint-arith.hpp"
-
 #include "ntt/ntt-internal.hpp"
-
-#include <arm_sve.h>
+#include "axhel/util/compiler.hpp"
 #include <stddef.h>
 #include <stdint.h>
+
+#ifdef AXHEL_HAS_SVE
+
+#include <arm_sve.h>
+
 
 namespace unipi {
 namespace axhel {
@@ -73,6 +73,7 @@ namespace {
             uint64_t *x_ptr = operand + block_start;
             uint64_t *y_ptr = x_ptr + gap;
 
+            AXHEL_UNROLL(4)
             for (size_t j = 0; j < gap; ++j) {
                 detail::ForwardButterflyNative(x_ptr[j], y_ptr[j], root, modulus, twice_modulus);
             }
@@ -107,6 +108,7 @@ namespace {
             /*
             * Fully populated SVE vectors.
             */
+            AXHEL_UNROLL(4)
             for (; j < vectorized_count; j += lanes) {
                 const svuint64_t x = svld1_u64(pg_all, x_ptr + j);
                 const svuint64_t y = svld1_u64(pg_all, y_ptr + j);
@@ -155,6 +157,7 @@ namespace {
             uint64_t *x_ptr = operand + block_start;
             uint64_t *y_ptr = x_ptr + gap;
 
+            AXHEL_UNROLL(4)
             for (size_t j = 0; j < gap; ++j) {
                 detail::InverseButterflyNative(x_ptr[j], y_ptr[j], inv_root, modulus, twice_modulus);
             }
@@ -187,6 +190,7 @@ namespace {
 
             size_t j = 0;
 
+            AXHEL_UNROLL(4)
             for (; j < vectorized_count; j += lanes) {
                 const svuint64_t x = svld1_u64(pg_all, x_ptr + j);
                 const svuint64_t y = svld1_u64(pg_all, y_ptr + j);
@@ -241,6 +245,7 @@ namespace {
 
         size_t j = 0;
 
+        AXHEL_UNROLL(4)
         for (; j < vectorized_count; j += lanes) {
             const svuint64_t x = svld1_u64(pg_all, x_ptr + j);
             const svuint64_t y = svld1_u64(pg_all, y_ptr + j);
