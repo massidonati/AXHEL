@@ -68,6 +68,7 @@ AXHEL supports the following library-specific compile-time options.
 | `AXHEL_SHARED_LIB` | `ON`, `OFF` | `OFF` | Build AXHEL as a shared library instead of a static library. |
 | `AXHEL_TREAT_WARNING_AS_ERROR` | `ON`, `OFF` | `OFF` | Treat compiler warnings as errors. |
 | `AXHEL_CPU` | Any CPU name supported by the compiler, e.g. `native`, `neoverse-v1`, `neoverse-v2` | `native` | Select the target ARM CPU passed to the compiler through `-mcpu=<value>`. |
+| `AXHEL_OPT_REPORT` | `ON`, `OFF` | `OFF` | Enable GCC/Clang optimization reports. |
 
 In addition, AXHEL supports the standard CMake configuration variables.
 

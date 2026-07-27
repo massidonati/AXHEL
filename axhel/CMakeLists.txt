@@ -104,6 +104,16 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
             -Wno-unknown-warning
             -Wno-unknown-warning-option
     )
+    if (AXHEL_OPT_REPORT)
+         target_compile_options(
+            axhel
+            PRIVATE
+                -fopt-info-loop-optimized
+                -fopt-info-loop-missed
+                -fopt-info-vec-optimized
+                -fopt-info-vec-missed
+        )       
+    endif()
 else()
     message(FATAL_ERROR "Unsupported compiler: ${CMAKE_CXX_COMPILER_ID}")
 endif()

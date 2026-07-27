@@ -72,6 +72,7 @@ option(AXHEL_BENCHMARK "Enable benchmarking" OFF)
 option(AXHEL_SHARED_LIB "Generate a shared library" OFF)
 option(AXHEL_TESTING "Enables unit-tests" OFF)
 option(AXHEL_TREAT_WARNING_AS_ERROR "Treat all compile-time warnings as errors" OFF)
+option(AXHEL_OPT_REPORT "Enable GCC/Clang optimization reports" OFF)
 set(AXHEL_CPU "native" CACHE STRING "ARM CPU target passed to the compiler through -mcpu")
 
 check_cxx_compiler_flag("-mcpu=${AXHEL_CPU}" AXHEL_CPU_FLAG_SUPPORTED)
@@ -98,6 +99,7 @@ message(STATUS "AXHEL_DEBUG:                   ${AXHEL_DEBUG}")
 message(STATUS "AXHEL_SHARED_LIB:              ${AXHEL_SHARED_LIB}")
 message(STATUS "AXHEL_TESTING:                 ${AXHEL_TESTING}")
 message(STATUS "AXHEL_TREAT_WARNING_AS_ERROR:  ${AXHEL_TREAT_WARNING_AS_ERROR}")
+message(STATUS "AXHEL_OPT_REPORT:              ${AXHEL_OPT_REPORT}")
 
 #------------------------------------
 # Compiler detection and configuration
