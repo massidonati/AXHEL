@@ -9,7 +9,7 @@
 #include "axhel/number-theory/uint-arith.hpp"
 #include "eltwise/eltwise-fma-mod-native.hpp"
 #include "axhel/util/compiler.hpp"
-
+#include "axhel/util/debug.hpp"
 
 namespace unipi {
 namespace axhel {
@@ -78,9 +78,11 @@ namespace axhel {
     template <int ModFactor>
     inline void EltwiseFMAModDispatch(uint64_t* res, const uint64_t* op1, uint64_t op2, const uint64_t* op3, uint64_t n, uint64_t mod) {
         #ifdef AXHEL_HAS_SVE
-            EltwiseFMAModSVE<ModFactor>(res, op1, op2, op3, n, mod);
+        AXHEL_LOG("EltwiseFMAMod -> SVE" << ", mod_factor=" << ModFactor << ", n=" << n);
+        EltwiseFMAModSVE<ModFactor>(res, op1, op2, op3, n, mod);
         #else
-            EltwiseFMAModNative<ModFactor>(res, op1, op2, op3, n, mod);
+        AXHEL_LOG("EltwiseFMAMod -> native" << ", mod_factor=" << ModFactor << ", n=" << n);   
+        EltwiseFMAModNative<ModFactor>(res, op1, op2, op3, n, mod);
         #endif
     }
 

@@ -46,6 +46,31 @@ add_library(AXHEL::axhel ALIAS axhel)
 
 axhel_add_asan_flag(axhel)
 
+# GCC 11 may trigger an internal compiler error when AddressSanitizer
+# instruments SVE intrinsic-heavy template kernels.
+#
+# Keep ASan enabled for the AXHEL target in Debug builds, but disable
+# instrumentation only for the SVE translation units affected by the
+# compiler bug.
+if(
+    AXHEL_DEBUG
+    AND AXHEL_HAS_SVE
+    AND CMAKE_CXX_COMPILER_ID STREQUAL "GNU"
+    AND CMAKE_CXX_COMPILER_VERSION VERSION_LESS 12.0
+)
+    message(
+        STATUS
+        "Disabling AddressSanitizer instrumentation for SVE sources "
+        "due to a GCC ${CMAKE_CXX_COMPILER_VERSION} compiler limitation"
+    )
+
+    set_source_files_properties(
+        ${SVE_SRC}
+        PROPERTIES
+            COMPILE_OPTIONS "-fno-sanitize=address"
+    )
+endif()
+
 #---------------------------------
 # Generated configuration header
 #---------------------------------
@@ -94,7 +119,8 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
             -Wno-sign-conversion
             -Wno-unknown-pragmas 
             "-mcpu=${AXHEL_CPU}"
-            -fomit-frame-pointer
+            $<$<CONFIG:Debug>:-fno-omit-frame-pointer>
+            $<$<CONFIG:Release>:-fomit-frame-pointer>
             -Wno-implicit-int-conversion
     )
     # Avoid 3rd-party dependency warnings when including AXHEL as a dependency

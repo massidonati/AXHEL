@@ -9,6 +9,8 @@
 #include "eltwise/eltwise-reduce-mod-native.hpp"
 #include "eltwise/eltwise-reduce-mod-sve.hpp"
 #include "axhel/util/compiler.hpp"
+#include "axhel/util/debug.hpp"
+
 
 namespace unipi {
 namespace axhel {
@@ -89,8 +91,10 @@ namespace axhel {
 
     void EltwiseReduceMod(uint64_t* res, const uint64_t* op, uint64_t n, uint64_t mod, uint64_t in_mod_factor, uint64_t out_mod_factor) {
         #ifdef AXHEL_HAS_SVE
+        AXHEL_LOG("EltwiseReduceMod -> SVE" << ", in_factor=" << in_mod_factor << ", out_factor=" << out_mod_factor << ", n=" << n);
         EltwiseReduceModSVE(res,op,n,mod,in_mod_factor,out_mod_factor);
         #else
+        AXHEL_LOG("EltwiseReduceMod -> native" << ", in_factor=" << in_mod_factor << ", out_factor=" << out_mod_factor << ", n=" << n);
         EltwiseReduceModNative(res,op,n,mod,in_mod_factor,out_mod_factor);
         #endif
     }

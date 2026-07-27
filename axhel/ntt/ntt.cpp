@@ -5,9 +5,11 @@
 #include "axhel/eltwise/eltwise-reduce-mod.hpp"
 #include "axhel/number-theory/modular-reduction.hpp"
 #include "axhel/number-theory/uint-arith.hpp"
-#include "axhel/util/compiler.hpp"
 #include "ntt/ntt-native.hpp"
 #include "ntt/ntt-internal.hpp"
+#include "axhel/util/compiler.hpp"
+#include "axhel/util/debug.hpp"
+
 
 #ifdef AXHEL_HAS_SVE
 #include "ntt/ntt-sve.hpp"
@@ -163,8 +165,10 @@ namespace axhel {
     */
     void NTTNegacyclicHarveyLazy(uint64_t *operand, size_t coeff_count_power, uint64_t modulus, const NTTMultiplyOperand *root_powers) {
         #ifdef AXHEL_HAS_SVE
+        AXHEL_LOG("NTTNegacyclicHarveyLazy -> SVE" << ", degree=" << (size_t{1} << coeff_count_power));
         NTTNegacyclicHarveyLazySVE(operand, coeff_count_power, modulus, root_powers);
         #else
+        AXHEL_LOG("NTTNegacyclicHarveyLazy -> native" << ", degree=" << (size_t{1} << coeff_count_power));
         NTTNegacyclicHarveyLazyNative(operand, coeff_count_power, modulus, root_powers);
         #endif
     }
@@ -190,9 +194,11 @@ namespace axhel {
     *
     */
     void InverseNTTNegacyclicHarveyLazy(uint64_t *operand, size_t coeff_count_power, uint64_t modulus, const NTTMultiplyOperand *inv_root_powers, NTTMultiplyOperand inv_degree_modulo) {
-         #ifdef AXHEL_HAS_SVE
-         InverseNTTNegacyclicHarveyLazySVE(operand, coeff_count_power, modulus, inv_root_powers, inv_degree_modulo);
-         #else
+        #ifdef AXHEL_HAS_SVE
+        AXHEL_LOG("InverseNTTNegacyclicHarveyLazy -> SVE" << ", degree=" << (size_t{1} << coeff_count_power));
+        InverseNTTNegacyclicHarveyLazySVE(operand, coeff_count_power, modulus, inv_root_powers, inv_degree_modulo);
+        #else
+        AXHEL_LOG("InverseNTTNegacyclicHarveyLazy -> native" << ", degree=" << (size_t{1} << coeff_count_power));
         InverseNTTNegacyclicHarveyLazyNative(operand, coeff_count_power, modulus, inv_root_powers, inv_degree_modulo);
         #endif
     }

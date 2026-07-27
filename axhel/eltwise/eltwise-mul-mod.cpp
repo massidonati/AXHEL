@@ -9,6 +9,7 @@
 #include "axhel/number-theory/uint-arith.hpp"
 #include "eltwise/eltwise-mul-mod-native.hpp"
 #include "axhel/util/compiler.hpp"
+#include "axhel/util/debug.hpp"
 
 namespace unipi {
 namespace axhel {
@@ -64,9 +65,11 @@ namespace axhel {
     template <int ModFactor>
     inline void EltwiseMulModDispatch(uint64_t* res, const uint64_t* op1, const uint64_t* op2, uint64_t n, uint64_t mod) {
         #ifdef AXHEL_HAS_SVE
-            EltwiseMulModSVE<ModFactor>(res, op1, op2, n, mod);
+        AXHEL_LOG("EltwiseMulMod -> SVE" << ", mod_factor=" << ModFactor << ", n=" << n);
+        EltwiseMulModSVE<ModFactor>(res, op1, op2, n, mod);
         #else
-            EltwiseMulModNative<ModFactor>(res, op1, op2, n, mod);
+        AXHEL_LOG("EltwiseMulMod -> native" << ", mod_factor=" << ModFactor << ", n=" << n);
+        EltwiseMulModNative<ModFactor>(res, op1, op2, n, mod);
         #endif
     }
 

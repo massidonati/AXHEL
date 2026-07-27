@@ -6,6 +6,7 @@
 #include "eltwise/eltwise-sub-mod-native.hpp"
 #include "eltwise/eltwise-sub-mod-sve.hpp"
 #include "axhel/util/compiler.hpp"
+#include "axhel/util/debug.hpp"
 
 namespace unipi {
 namespace axhel {
@@ -44,8 +45,10 @@ namespace axhel {
 
     void EltwiseSubMod(uint64_t* res, const uint64_t* op1, const uint64_t* op2, uint64_t n, uint64_t mod) {
         #ifdef AXHEL_HAS_SVE
+        AXHEL_LOG("EltwiseSubMod vector-vector -> SVE");
         EltwiseSubModSVE(res,op1,op2,n,mod);
         #else
+        AXHEL_LOG("EltwiseSubMod vector-vector -> native");
         EltwiseSubModNative(res,op1,op2,n,mod);
         #endif
     }
@@ -53,8 +56,10 @@ namespace axhel {
 
     void EltwiseSubMod(uint64_t* res, const uint64_t* op1, const uint64_t op2, uint64_t n, uint64_t mod) {
         #ifdef AXHEL_HAS_SVE
+        AXHEL_LOG("EltwiseSubMod vector-scalar -> SVE");
         EltwiseSubModSVE(res,op1,op2,n,mod);
         #else
+        AXHEL_LOG("EltwiseSubMod vector-scalar -> native");
         EltwiseSubModNative(res,op1,op2,n,mod);
         #endif
     }

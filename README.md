@@ -74,7 +74,7 @@ In addition, AXHEL supports the standard CMake configuration variables.
 
 | CMake Variable | Typical Values | Default | Description |
 |----------------|----------------|:-------:|-------------|
-| `CMAKE_BUILD_TYPE` | `Release`, `Debug` | `Release` | Select the build configuration. |
+| `CMAKE_BUILD_TYPE` | `Release`, `Debug` | `Release` | Select the build configuration. `Debug` enables debug symbols, AXHEL runtime tracing, and AddressSanitizer. |
 | `CMAKE_INSTALL_PREFIX` | `<path>` | System default | Specify the installation directory used by `cmake --install`. |
 
 
@@ -120,6 +120,11 @@ cmake --install build
 The installation includes the AXHEL library, public headers, CMake package configuration files, and exported CMake targets, 
 enabling AXHEL to be easily integrated into external CMake projects using `find_package(AXHEL)`.
 
+# Debugging
+
+For maximum performance, AXHEL performs only minimal runtime validation in `Release` builds. To debug AXHEL, configure and build the library with `-DCMAKE_BUILD_TYPE=Debug`. This generates a debug version of the library (e.g., `libaxhel_debug.a`) with debug symbols, enables internal `AXHEL_LOG` tracing, and links against AddressSanitizer.
+
+Enabling `CMAKE_BUILD_TYPE=Debug` introduces a significant runtime overhead and is intended exclusively for debugging and development.
 
 # Integration
 
