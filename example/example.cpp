@@ -350,10 +350,10 @@ void ExampleNTT() {
     const std::vector<uint64_t> expected_forward{5, 0, 13, 8, 9, 11, 5, 8};
 
     /*
-    * NTT object
+    * NTT objects
     */
     unipi::axhel::NTT ntt(degree, modulus, root_powers.data(), inv_root_powers.data(), inv_degree_modulo);
-
+    unipi::axhel::NTT autonomous_ntt(degree, modulus, 3);
 
     /*
      * Normalized forward NTT.
@@ -457,6 +457,52 @@ void ExampleNTT() {
         const bool success = CheckEqual(result, original);
 
         std::cout << "NTT round-trip: " << (success ? "PASS" : "FAIL") << '\n';
+    }
+
+
+    /*
+    * Forward with autonomous object
+    */
+    {
+        std::vector<uint64_t> result = original;
+
+        autonomous_ntt.ComputeForward(result.data(), result.data(), 1, 1);
+
+        const bool success = CheckEqual(result, expected_forward);
+
+        std::cout << "Autonomous forward NTT: " << (success ? "PASS" : "FAIL") << '\n';
+    }
+
+
+    /*
+    * Forward + inverse with autonomous object
+    */
+    {
+        std::vector<uint64_t> result = original;
+
+        autonomous_ntt.ComputeForward(result.data(), result.data(), 1, 1);
+
+        autonomous_ntt.ComputeInverse(result.data(), result.data(), 1, 1);
+
+        const bool success = CheckEqual(result, original);
+
+        std::cout << "Autonomous NTT round-trip: " << (success ? "PASS" : "FAIL") << '\n';
+    }
+
+    /*
+    * External/Autonomous forward NTT
+    */
+    {
+        std::vector<uint64_t> external_result = original;
+        std::vector<uint64_t> autonomous_result = original;
+
+        ntt.ComputeForward(external_result.data(), external_result.data(), 1, 4);
+
+        autonomous_ntt.ComputeForward(autonomous_result.data(), autonomous_result.data(), 1, 4);
+
+        const bool success = CheckEqual(external_result, autonomous_result);
+
+        std::cout << "External/autonomous lazy NTT: " << (success ? "PASS" : "FAIL") << '\n';
     }
 
     std::cout << "Done running ExampleNTT\n";

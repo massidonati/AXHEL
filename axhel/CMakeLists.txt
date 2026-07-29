@@ -14,6 +14,7 @@ set(NATIVE_SRC
     number-theory/multiply-factor.cpp
     ntt/ntt.cpp
     ntt/ntt-native.cpp
+    ntt/ntt-tables.cpp
 )
 
 set(SVE_SRC)

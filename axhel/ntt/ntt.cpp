@@ -4,11 +4,14 @@
 #include "axhel/ntt/ntt.hpp"
 #include "axhel/eltwise/eltwise-reduce-mod.hpp"
 #include "ntt/ntt-native.hpp"
+#include "ntt/ntt-tables.hpp"
 #include "axhel/util/debug.hpp"
 #include <stddef.h>
 #include <stdint.h>
 #include <vector>
 #include <algorithm>
+#include <memory>
+#include <utility>
 
 #ifdef AXHEL_HAS_SVE
 #include "ntt/ntt-sve.hpp"
@@ -131,6 +134,28 @@ namespace axhel {
     }
 
 
+    NTT::NTT(uint64_t degree, uint64_t modulus, uint64_t root_of_unity) : impl_(std::make_shared<Impl>()) {
+        impl_->degree = degree;
+        impl_->coeff_count_power = ComputeCoeffCountPower(degree);
+        impl_->modulus = modulus;
+
+        detail::NTTTableData tables = detail::GenerateNTTTables(static_cast<std::size_t>(degree), impl_->coeff_count_power, modulus, root_of_unity);
+
+        impl_->owned_root_powers = std::move(tables.root_powers);
+        impl_->owned_inv_root_powers = std::move(tables.inv_root_powers);
+        impl_->inv_degree_modulo = tables.inv_degree_modulo;
+
+        /*
+        * Set active pointers only after the vectors have received their
+        * final storage.
+        */
+        impl_->root_powers = impl_->owned_root_powers.data();
+        impl_->inv_root_powers = impl_->owned_inv_root_powers.data();
+
+        AXHEL_LOG("NTT constructed with internally generated tables" << ", degree=" << degree << ", modulus=" << modulus << ", root=" << root_of_unity);
+    }
+
+    
     NTT::~NTT() = default;
 
 
