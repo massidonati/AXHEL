@@ -120,23 +120,23 @@ cmake --install build
 The installation includes the AXHEL library, public headers, CMake package configuration files, and exported CMake targets, 
 enabling AXHEL to be easily integrated into external CMake projects using `find_package(AXHEL)`.
 
-# Debugging
+## Debugging
 
 For maximum performance, AXHEL performs only minimal runtime validation in `Release` builds. To debug AXHEL, configure and build the library with `-DCMAKE_BUILD_TYPE=Debug`. This generates a debug version of the library (e.g., `libaxhel_debug.a`) with debug symbols, enables internal `AXHEL_LOG` tracing, and links against AddressSanitizer.
 
 Enabling `CMAKE_BUILD_TYPE=Debug` introduces a significant runtime overhead and is intended exclusively for debugging and development.
 
-# Integration
+## Integration
 
 AXHEL is designed to be easily integrated into homomorphic encryption frameworks requiring high-performance modular arithmetic kernels.
 
 
-# Contributing
+## Contributing
 
 Contributions, bug reports and feature requests are welcome.
 
 
-# License
+## License
 
 AXHEL is distributed under the Apache License 2.0.
 

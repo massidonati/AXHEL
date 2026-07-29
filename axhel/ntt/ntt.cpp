@@ -3,221 +3,188 @@
 
 #include "axhel/ntt/ntt.hpp"
 #include "axhel/eltwise/eltwise-reduce-mod.hpp"
-#include "axhel/number-theory/modular-reduction.hpp"
-#include "axhel/number-theory/uint-arith.hpp"
 #include "ntt/ntt-native.hpp"
-#include "ntt/ntt-internal.hpp"
-#include "axhel/util/compiler.hpp"
 #include "axhel/util/debug.hpp"
-
+#include <stddef.h>
+#include <stdint.h>
+#include <vector>
+#include <algorithm>
 
 #ifdef AXHEL_HAS_SVE
 #include "ntt/ntt-sve.hpp"
 #endif
 
-#include <stddef.h>
-#include <stdint.h>
 
 namespace unipi {
 namespace axhel {
 
 
-    /*
-    * Native forward lazy NTT.
-    */
-    void NTTNegacyclicHarveyLazyNative(uint64_t *operand, size_t coeff_count_power, uint64_t modulus, const NTTMultiplyOperand *root_powers) {
-        const size_t coeff_count = size_t{ 1 } << coeff_count_power;
-        const uint64_t twice_modulus =  modulus << 1;
+    class NTT::Impl {
+    public:
+        uint64_t degree{0};
+        std::size_t coeff_count_power{0};
+        uint64_t modulus{0};
 
         /*
-        * Cooley-Tukey stage organization.
+        * Storage used by the standalone constructor.
         *
-        * At every stage:
-        *
-        *   m   = number of blocks
-        *   gap = distance between butterfly operands
+        * These vectors remain empty when externally owned tables are used.
         */
-        size_t m = 1;
-        size_t gap = coeff_count >> 1;
+        std::vector<NTTMultiplyOperand> owned_root_powers;
+        std::vector<NTTMultiplyOperand> owned_inv_root_powers;
 
-        while (m < coeff_count) {
-            for (size_t i = 0; i < m; ++i) {
-                /*
-                * SEAL's forward root table is stored in bit-reversed
-                * order. At stage m, roots are at indices:
-                *
-                *   m, m+1, ..., 2m-1
-                */
-                const NTTMultiplyOperand &root = root_powers[m + i];
-                const size_t block_start = i * (gap << 1);
-                uint64_t *x_ptr = operand + block_start;
-                uint64_t *y_ptr = x_ptr + gap;
+        /*
+        * Active tables used by the transform kernels.
+        *
+        * They point either to the owned vectors above or to externally
+        * supplied tables.
+        */
+        const NTTMultiplyOperand *root_powers{nullptr};
+        const NTTMultiplyOperand *inv_root_powers{nullptr};
 
-                AXHEL_UNROLL(4)
-                for (size_t j = 0; j < gap; ++j) {
-                    detail::ForwardButterflyNative(x_ptr[j], y_ptr[j], root, modulus, twice_modulus);
-                }
+        NTTMultiplyOperand inv_degree_modulo{0, 0};
+    };
+
+    namespace {
+
+        size_t ComputeCoeffCountPower(uint64_t degree) {
+            size_t result = 0;
+            while (degree > 1) {
+                degree >>= 1;
+                ++result;
             }
-
-            m <<= 1;
-            gap >>= 1;
-        }
-    }
-
-    /*
-    * Native inverse lazy NTT.
-    */
-    void InverseNTTNegacyclicHarveyLazyNative(uint64_t *operand, size_t coeff_count_power, uint64_t modulus, const NTTMultiplyOperand *inv_root_powers, NTTMultiplyOperand inv_degree_modulo) {
-        const size_t coeff_count = size_t{ 1 } << coeff_count_power;
-        const uint64_t twice_modulus = modulus << 1;
-
-        /*
-        * Gentleman-Sande inverse stages.
-        *
-        * The inverse root table is already stored by SEAL in the exact
-        * traversal order required here. Therefore roots must be consumed
-        * sequentially.
-        */
-        size_t root_index = 1;
-        size_t m = coeff_count >> 1;
-        size_t gap = 1;
-
-        /*
-        * Handle every stage except the final stage.
-        *
-        * The final stage is specialized because it also incorporates
-        * multiplication by n^{-1}.
-        */
-        while (m > 1) {
-            for (size_t i = 0; i < m; ++i) {
-                const NTTMultiplyOperand &inv_root = inv_root_powers[root_index++];
-                const size_t block_start = i * (gap << 1);
-                uint64_t *x_ptr = operand + block_start;
-                uint64_t *y_ptr =  x_ptr + gap;
-
-                AXHEL_UNROLL(4)
-                for (size_t j = 0; j < gap; ++j) {
-                    detail::InverseButterflyNative(x_ptr[j], y_ptr[j], inv_root, modulus, twice_modulus);
-                }
-            }
-
-            m >>= 1;
-            gap <<= 1;
+            return result;
         }
 
         /*
-        * At this point root_index identifies the root of the final
-        * inverse stage.
-        *
-        * For N coefficients, this is normally index N-1.
+        * Internal forward-lazy dispatcher.
         */
-        const NTTMultiplyOperand &final_inv_root = inv_root_powers[root_index];
+        void NTTNegacyclicHarveyLazy(uint64_t *operand, size_t coeff_count_power, uint64_t modulus, const NTTMultiplyOperand *root_powers) {
+            #ifdef AXHEL_HAS_SVE
+            AXHEL_LOG("NTTNegacyclicHarveyLazy -> SVE" << ", degree=" << (size_t{1} << coeff_count_power));
+            NTTNegacyclicHarveyLazySVE(operand, coeff_count_power, modulus, root_powers);
+            #else
+            AXHEL_LOG("NTTNegacyclicHarveyLazy -> native" << ", degree=" << (size_t{1} << coeff_count_power));
+            NTTNegacyclicHarveyLazyNative(operand, coeff_count_power, modulus, root_powers);
+            #endif
+        }
 
         /*
-        * Construct the combined multiplier:
-        *
-        *   final_inv_root * n^{-1} mod q
-        *
-        * SEAL performs the same combination through mul_root_scalar.
+        * Internal normalized forward NTT.
         */
-        uint64_t scaled_root_operand = MultiplyUIntModLazy(final_inv_root.operand, inv_degree_modulo.operand, inv_degree_modulo.quotient, modulus);
+        void NTTNegacyclicHarvey(uint64_t *operand, size_t coeff_count_power, uint64_t modulus, const NTTMultiplyOperand *root_powers) {
+            NTTNegacyclicHarveyLazy(operand, coeff_count_power, modulus, root_powers);
 
-        scaled_root_operand = ReduceModFactor2To1Native(scaled_root_operand, modulus);
-
-        const NTTMultiplyOperand scaled_root{
-            scaled_root_operand,
-            ComputeShoupQuotient(scaled_root_operand, modulus)
-        };
-
-        /*
-        * Final inverse stage.
-        *
-        * At this point:
-        *
-        *   m   = 1
-        *   gap = coeff_count / 2
-        *
-        * Every upper result is multiplied by n^{-1}.
-        * Every lower result is multiplied by final_root * n^{-1}.
-        */
-        uint64_t *x_ptr = operand;
-
-        uint64_t *y_ptr = operand + gap;
-
-        AXHEL_UNROLL(4)
-        for (size_t j = 0; j < gap; ++j) {
-            const uint64_t guarded_x = ReduceModFactor4To2Native(x_ptr[j], twice_modulus);
-            const uint64_t y = y_ptr[j];
-            const uint64_t sum = guarded_x + y;
-            const uint64_t difference = guarded_x + twice_modulus - y;
+            const size_t coeff_count = size_t{ 1 } << coeff_count_power;
 
             /*
-            * Both lazy products are returned in [0, 2q).
+            * Forward lazy output:
+            *
+            *   [0, 4q) -> [0, q)
             */
-            x_ptr[j] = MultiplyUIntModLazy(sum, inv_degree_modulo.operand, inv_degree_modulo.quotient, modulus);
+            EltwiseReduceMod(operand, operand, static_cast<uint64_t>(coeff_count), modulus, 4, 1);
+        }
 
-            y_ptr[j] = MultiplyUIntModLazy( difference, scaled_root.operand, scaled_root.quotient, modulus);
+        /*
+        * Internal inverse-lazy dispatcher.
+        *
+        */
+        void InverseNTTNegacyclicHarveyLazy(uint64_t *operand, size_t coeff_count_power, uint64_t modulus, const NTTMultiplyOperand *inv_root_powers, NTTMultiplyOperand inv_degree_modulo) {
+            #ifdef AXHEL_HAS_SVE
+            AXHEL_LOG("InverseNTTNegacyclicHarveyLazy -> SVE" << ", degree=" << (size_t{1} << coeff_count_power));
+            InverseNTTNegacyclicHarveyLazySVE(operand, coeff_count_power, modulus, inv_root_powers, inv_degree_modulo);
+            #else
+            AXHEL_LOG("InverseNTTNegacyclicHarveyLazy -> native" << ", degree=" << (size_t{1} << coeff_count_power));
+            InverseNTTNegacyclicHarveyLazyNative(operand, coeff_count_power, modulus, inv_root_powers, inv_degree_modulo);
+            #endif
+        }
+
+        /*
+        * Internal normalized inverse NTT.
+        */
+        void InverseNTTNegacyclicHarvey(uint64_t *operand, size_t coeff_count_power, uint64_t modulus, const NTTMultiplyOperand *inv_root_powers, NTTMultiplyOperand inv_degree_modulo) {
+            InverseNTTNegacyclicHarveyLazy(operand, coeff_count_power, modulus, inv_root_powers, inv_degree_modulo);
+
+            const size_t coeff_count = size_t{ 1 } << coeff_count_power;
+
+            /*
+            * Inverse lazy output:
+            *
+            *   [0, 2q) -> [0, q)
+            */
+            EltwiseReduceMod(operand, operand, static_cast<uint64_t>(coeff_count), modulus, 2, 1);
+        }
+    
+    } // namespace anonymous 
+
+
+    /// @brief Constructs an NTT instance from precomputed twiddle-factor tables.
+    NTT::NTT(uint64_t degree, uint64_t modulus, const NTTMultiplyOperand *root_powers, const NTTMultiplyOperand *inv_root_powers, NTTMultiplyOperand inv_degree_modulo): impl_(std::make_shared<Impl>()) {
+        impl_->degree = degree;
+        impl_->coeff_count_power = ComputeCoeffCountPower(degree);
+        impl_->modulus = modulus;
+        impl_->root_powers = root_powers;
+        impl_->inv_root_powers = inv_root_powers;
+        impl_->inv_degree_modulo = inv_degree_modulo;
+
+        AXHEL_LOG("NTT constructed with external tables" << ", degree=" << degree << ", modulus=" << modulus);
+    }
+
+
+    NTT::~NTT() = default;
+
+
+    NTT::NTT(const NTT &) noexcept = default;
+
+
+    NTT &NTT::operator=(const NTT &) noexcept = default;
+
+
+    NTT::NTT(NTT &&) noexcept = default;
+
+
+    NTT &NTT::operator=(NTT &&) noexcept = default;
+
+    /// @brief Computes the forward negacyclic Harvey NTT.
+    void NTT::ComputeForward(uint64_t *result, const uint64_t *operand, uint64_t input_mod_factor, uint64_t output_mod_factor) const {
+        if (result != operand) {
+         std::copy_n(operand, static_cast<std::size_t>(impl_->degree), result);
+        }
+
+        if (output_mod_factor == 4) {
+            NTTNegacyclicHarveyLazy(result, impl_->coeff_count_power, impl_->modulus, impl_->root_powers);
+        }
+        else {
+            NTTNegacyclicHarvey(result, impl_->coeff_count_power, impl_->modulus, impl_->root_powers);
         }
     }
 
-    /*
-    * Public forward-lazy dispatcher.
-    */
-    void NTTNegacyclicHarveyLazy(uint64_t *operand, size_t coeff_count_power, uint64_t modulus, const NTTMultiplyOperand *root_powers) {
-        #ifdef AXHEL_HAS_SVE
-        AXHEL_LOG("NTTNegacyclicHarveyLazy -> SVE" << ", degree=" << (size_t{1} << coeff_count_power));
-        NTTNegacyclicHarveyLazySVE(operand, coeff_count_power, modulus, root_powers);
-        #else
-        AXHEL_LOG("NTTNegacyclicHarveyLazy -> native" << ", degree=" << (size_t{1} << coeff_count_power));
-        NTTNegacyclicHarveyLazyNative(operand, coeff_count_power, modulus, root_powers);
-        #endif
+
+    /// @brief Computes the inverse negacyclic Harvey NTT.
+    void NTT::ComputeInverse(uint64_t *result, const uint64_t *operand, uint64_t input_mod_factor, uint64_t output_mod_factor) const {
+        if (result != operand) {
+            std::copy_n(operand, static_cast<std::size_t>(impl_->degree), result);
+        }
+        if (output_mod_factor == 2) {
+            InverseNTTNegacyclicHarveyLazy(result, impl_->coeff_count_power, impl_->modulus, impl_->inv_root_powers, impl_->inv_degree_modulo);
+        }
+        else {
+            InverseNTTNegacyclicHarvey(result, impl_->coeff_count_power, impl_->modulus, impl_->inv_root_powers, impl_->inv_degree_modulo);
+        }
     }
 
-    /*
-    * Public normalized forward NTT.
-    */
-    void NTTNegacyclicHarvey(uint64_t *operand, size_t coeff_count_power, uint64_t modulus, const NTTMultiplyOperand *root_powers) {
-        NTTNegacyclicHarveyLazy(operand, coeff_count_power, modulus, root_powers);
-
-        const size_t coeff_count = size_t{ 1 } << coeff_count_power;
-
-        /*
-        * Forward lazy output:
-        *
-        *   [0, 4q) -> [0, q)
-        */
-        EltwiseReduceMod(operand, operand, static_cast<uint64_t>(coeff_count), modulus, 4, 1);
-    }
 
     /*
-    * Public inverse-lazy dispatcher.
-    *
+    * Accessors 
     */
-    void InverseNTTNegacyclicHarveyLazy(uint64_t *operand, size_t coeff_count_power, uint64_t modulus, const NTTMultiplyOperand *inv_root_powers, NTTMultiplyOperand inv_degree_modulo) {
-        #ifdef AXHEL_HAS_SVE
-        AXHEL_LOG("InverseNTTNegacyclicHarveyLazy -> SVE" << ", degree=" << (size_t{1} << coeff_count_power));
-        InverseNTTNegacyclicHarveyLazySVE(operand, coeff_count_power, modulus, inv_root_powers, inv_degree_modulo);
-        #else
-        AXHEL_LOG("InverseNTTNegacyclicHarveyLazy -> native" << ", degree=" << (size_t{1} << coeff_count_power));
-        InverseNTTNegacyclicHarveyLazyNative(operand, coeff_count_power, modulus, inv_root_powers, inv_degree_modulo);
-        #endif
+    uint64_t NTT::Degree() const noexcept {
+        return impl_ ? impl_->degree : 0;
     }
 
-    /*
-    * Public normalized inverse NTT.
-    */
-    void InverseNTTNegacyclicHarvey(uint64_t *operand, size_t coeff_count_power, uint64_t modulus, const NTTMultiplyOperand *inv_root_powers, NTTMultiplyOperand inv_degree_modulo) {
-        InverseNTTNegacyclicHarveyLazy(operand, coeff_count_power, modulus, inv_root_powers, inv_degree_modulo);
-
-        const size_t coeff_count = size_t{ 1 } << coeff_count_power;
-
-        /*
-        * Inverse lazy output:
-        *
-        *   [0, 2q) -> [0, q)
-        */
-        EltwiseReduceMod(operand, operand, static_cast<uint64_t>(coeff_count), modulus, 2, 1);
+    uint64_t NTT::Modulus() const noexcept {
+        return impl_ ? impl_->modulus : 0;
     }
+
 
 } // namespace axhel
 } // namespace unipi

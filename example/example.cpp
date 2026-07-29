@@ -292,6 +292,7 @@ void ExampleNTT() {
     std::cout << "Running ExampleNTT...\n";
 
     constexpr size_t coeff_count_power = 3;
+    constexpr uint64_t degree = uint64_t{1} << coeff_count_power;
     constexpr uint64_t modulus = 17;
     constexpr uint64_t twice_modulus = 2 * modulus;
     constexpr uint64_t four_times_modulus = 4 * modulus;
@@ -349,12 +350,18 @@ void ExampleNTT() {
     const std::vector<uint64_t> expected_forward{5, 0, 13, 8, 9, 11, 5, 8};
 
     /*
+    * NTT object
+    */
+    unipi::axhel::NTT ntt(degree, modulus, root_powers.data(), inv_root_powers.data(), inv_degree_modulo);
+
+
+    /*
      * Normalized forward NTT.
      */
     {
         std::vector<uint64_t> result = original;
 
-        unipi::axhel::NTTNegacyclicHarvey(result.data(), coeff_count_power, modulus, root_powers.data());
+        ntt.ComputeForward(result.data(), result.data(), 1, 1);
 
         const bool success = CheckEqual(result, expected_forward);
 
@@ -370,7 +377,7 @@ void ExampleNTT() {
     {
         std::vector<uint64_t> result = expected_forward;
 
-        unipi::axhel::InverseNTTNegacyclicHarvey(result.data(), coeff_count_power, modulus, inv_root_powers.data(), inv_degree_modulo);
+        ntt.ComputeInverse(result.data(), result.data(), 1, 1);
 
         const bool success = CheckEqual(result, original);
 
@@ -388,7 +395,7 @@ void ExampleNTT() {
      */
     std::vector<uint64_t> forward_lazy = original;
 
-    unipi::axhel::NTTNegacyclicHarveyLazy( forward_lazy.data(), coeff_count_power, modulus, root_powers.data());
+    ntt.ComputeForward(forward_lazy.data(), forward_lazy.data(), 1, 4);
 
     const bool forward_lazy_success = CheckCongruentAndRange(forward_lazy, expected_forward, modulus, four_times_modulus);
 
@@ -416,11 +423,41 @@ void ExampleNTT() {
      *   - be congruent to the original polynomial modulo q;
      *   - lie in [0, 2q).
      */
-    unipi::axhel::InverseNTTNegacyclicHarveyLazy( inverse_lazy.data(), coeff_count_power, modulus, inv_root_powers.data(), inv_degree_modulo);
+    ntt.ComputeInverse(inverse_lazy.data(), inverse_lazy.data(), 2, 2);
 
     const bool inverse_lazy_success = CheckCongruentAndRange( inverse_lazy, original, modulus, twice_modulus);
 
     std::cout << "Inverse NTT lazy: " << (inverse_lazy_success ? "PASS" : "FAIL") << '\n';
+
+
+    /*
+    * Out-of-place forward NTT.
+    */
+    {
+        std::vector<uint64_t> result(original.size());
+
+        ntt.ComputeForward(result.data(), original.data(), 1, 1);
+
+        const bool success = CheckEqual(result, expected_forward);
+
+        std::cout << "Forward NTT out-of-place: " << (success ? "PASS" : "FAIL") << '\n';
+    }
+
+
+    /*
+    * Forward + inverse using the same object.
+    */
+    {
+        std::vector<uint64_t> result = original;
+
+        ntt.ComputeForward(result.data(), result.data(), 1, 1);
+
+        ntt.ComputeInverse(result.data(), result.data(), 1, 1);
+
+        const bool success = CheckEqual(result, original);
+
+        std::cout << "NTT round-trip: " << (success ? "PASS" : "FAIL") << '\n';
+    }
 
     std::cout << "Done running ExampleNTT\n";
 }

@@ -13,6 +13,7 @@ set(NATIVE_SRC
     eltwise/eltwise-reduce-mod.cpp
     number-theory/multiply-factor.cpp
     ntt/ntt.cpp
+    ntt/ntt-native.cpp
 )
 
 set(SVE_SRC)
@@ -235,11 +236,8 @@ configure_package_config_file(
 
 write_basic_package_version_file(
     "${AXHEL_CONFIG_VERSION_FILENAME}"
-    VERSION
-        "${AXHEL_VERSION}"
-
-    COMPATIBILITY
-        ExactVersion
+    VERSION "${AXHEL_VERSION}"
+    COMPATIBILITY ExactVersion
 )
 
 install(
