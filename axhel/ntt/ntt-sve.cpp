@@ -243,6 +243,156 @@ namespace {
     }
 
 
+    inline void ForwardFinalTwoStagesSVE128(
+        uint64_t *__restrict operand,
+        size_t coeff_count,
+        uint64_t modulus,
+        uint64_t twice_modulus,
+        const NTTMultiplyOperand *__restrict root_powers) noexcept
+    {
+        /*
+        * This kernel fuses the final two forward stages:
+        *
+        *   first stage:  gap = 2, m = coeff_count / 4
+        *   final stage:  gap = 1, m = coeff_count / 2
+        *
+        * It is specialized for a 128-bit SVE vector length:
+        *
+        *   svcntd() == 2
+        *
+        * Each iteration processes four consecutive coefficients:
+        *
+        *   a, b, c, d
+        *
+        * The gap = 2 stage applies butterflies to:
+        *
+        *   (a, c)
+        *   (b, d)
+        *
+        * The gap = 1 stage then applies butterflies to:
+        *
+        *   (u0, u1)
+        *   (v0, v1)
+        *
+        * where:
+        *
+        *   [u0, u1] and [v0, v1]
+        *
+        * are the results of the first fused stage.
+        */
+        const svbool_t pg_all = svptrue_b64();
+        const svuint64_t modulus_vec = svdup_n_u64(modulus);
+        const svuint64_t twice_modulus_vec = svdup_n_u64(twice_modulus);
+
+        /*
+        * Twiddle-table offsets for the two fused stages.
+        */
+        const size_t first_stage_m = coeff_count >> 2;
+        const size_t final_stage_m = coeff_count >> 1;
+
+        AXHEL_UNROLL(4)
+        for (size_t i = 0; i < first_stage_m; ++i) {
+            uint64_t *block = operand + (i << 2);
+
+            /*
+            * Four contiguous coefficients:
+            *
+            *   block[0] = a
+            *   block[1] = b
+            *   block[2] = c
+            *   block[3] = d
+            *
+            * With VL=128:
+            *
+            *   x = [a, b]
+            *   y = [c, d]
+            *
+            * These are exactly the two independent butterflies
+            * of the gap = 2 stage.
+            */
+            const svuint64_t x = svld1_u64(pg_all, block);
+            const svuint64_t y = svld1_u64(pg_all, block + 2);
+
+            /*
+            * Both lanes use the same twiddle in the gap = 2 stage.
+            */
+            const NTTMultiplyOperand &first_root = root_powers[first_stage_m + i];
+            const svuint64_t first_root_vec = svdup_n_u64(first_root.operand);
+            const svuint64_t first_root_quotient_vec = svdup_n_u64(first_root.quotient);
+
+            svuint64_t upper;
+            svuint64_t lower;
+
+            ForwardButterflyVector(pg_all, x, y, first_root_vec, first_root_quotient_vec, modulus_vec, twice_modulus_vec, upper, lower);
+
+            /*
+            * After the gap = 2 stage:
+            *
+            *   upper = [u0, u1]
+            *   lower = [v0, v1]
+            *
+            * The final gap = 1 stage needs the pairs:
+            *
+            *   (u0, u1)
+            *   (v0, v1)
+            *
+            * Arrange them by transposing the two vectors:
+            *
+            *   final_x = [u0, v0]
+            *   final_y = [u1, v1]
+            *
+            * Therefore:
+            *
+            *   lane 0 executes (u0, u1)
+            *   lane 1 executes (v0, v1)
+            */
+            const svuint64_t final_x = svtrn1_u64(upper, lower);
+            const svuint64_t final_y = svtrn2_u64(upper, lower);
+
+            /*
+            * The two final butterflies use two different twiddles:
+            *
+            *   root_powers[final_stage_m + 2*i]
+            *   root_powers[final_stage_m + 2*i + 1]
+            *
+            * NTTMultiplyOperand is laid out as:
+            *
+            *   operand, quotient
+            *
+            * Thus svld2 deinterleaves the two structures into:
+            *
+            *   roots     = [root0, root1]
+            *   quotients = [quotient0, quotient1]
+            */
+            const uint64_t *final_root_words = reinterpret_cast<const uint64_t *>(root_powers + final_stage_m + (i << 1));
+            const svuint64x2_t final_roots = svld2_u64(pg_all, final_root_words);
+            const svuint64_t final_root_vec = svget2_u64(final_roots, 0);
+            const svuint64_t final_root_quotient_vec = svget2_u64( final_roots, 1);
+
+            svuint64_t result_x;
+            svuint64_t result_y;
+
+            ForwardButterflyVector(pg_all, final_x, final_y, final_root_vec, final_root_quotient_vec, modulus_vec, twice_modulus_vec, result_x, result_y);
+
+            /*
+            * The second butterfly produces:
+            *
+            *   result_x = [r0, r2]
+            *   result_y = [r1, r3]
+            *
+            * Restore the contiguous order:
+            *
+            *   r0, r1, r2, r3
+            */
+            const svuint64_t output01 = svzip1_u64(result_x, result_y);
+            const svuint64_t output23 = svzip2_u64(result_x, result_y);
+           
+            svst1_u64(pg_all, block, output01);
+            svst1_u64(pg_all, block + 2, output23);
+        }
+    }
+
+
     inline void InverseStageScalar(
         uint64_t *__restrict operand,
         size_t m,
@@ -379,7 +529,7 @@ namespace {
 } // namespace
 
 
-    void NTTNegacyclicHarveyLazySVE(
+void NTTNegacyclicHarveyLazySVE(
         uint64_t *operand,
         size_t coeff_count_power,
         uint64_t modulus,
@@ -394,33 +544,42 @@ namespace {
         size_t gap = coeff_count >> 1;
 
         /*
-        * Process every stage except the final gap = 1 stage.
+        *   Fused last two stages for VL=128 bits
         */
-        while (gap > 1) {
-            if (gap >= lanes) {
+        if (lanes == 2 && coeff_count >= 4) {
+            /*
+            *   All stages before gap = 2 or 1
+            */
+            while (gap > 2) {
                 ForwardStageSVE(operand, m, gap, modulus, twice_modulus, root_powers);
-            }
-            else {
-                /*
-                * Portable fallback for hypothetical vector lengths
-                * larger than the remaining gap.
-                */
-                ForwardStageScalar(operand, m, gap, modulus, twice_modulus, root_powers);
+
+                m <<= 1;
+                gap >>= 1;
             }
 
-            m <<= 1;
-            gap >>= 1;
+            /*
+            *   Specialized microkernel 
+            */
+            ForwardFinalTwoStagesSVE128(operand, coeff_count, modulus, twice_modulus, root_powers);
         }
+        else {
+            /*
+            *   Generic vector-length-independent path
+            */
+            while (gap > 1) {
+                if (gap >= lanes) {
+                    ForwardStageSVE(operand, m, gap, modulus, twice_modulus, root_powers);
+                }
+                else {
+                    ForwardStageScalar(operand, m, gap, modulus, twice_modulus, root_powers);
+                }
 
-        /*
-        * At this point:
-        *
-        *   gap == 1
-        *   m   == coeff_count / 2
-        *
-        * Process the final stage with interleaved SVE loads/stores.
-        */
-        ForwardFinalStageSVE(operand, m, modulus, twice_modulus, root_powers);
+                m <<= 1;
+                gap >>= 1;
+            }
+
+            ForwardFinalStageSVE(operand, m, modulus, twice_modulus, root_powers);
+        }
     }
     
     
