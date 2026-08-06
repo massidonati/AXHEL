@@ -80,6 +80,7 @@ namespace {
         }
     }
 
+
     inline void ForwardStageSVE(
         uint64_t *__restrict operand,
         size_t m,
@@ -140,6 +141,107 @@ namespace {
             }
         }
     }
+
+
+    inline void ForwardFinalStageSVE(
+        uint64_t *__restrict operand,
+        size_t m,
+        uint64_t modulus,
+        uint64_t twice_modulus,
+        const NTTMultiplyOperand *__restrict root_powers) noexcept
+    {
+        /*
+        * Final forward stage:
+        *
+        *   gap = 1
+        *
+        * Memory layout:
+        *
+        *   x0, y0, x1, y1, ...
+        *
+        * Each butterfly uses a different root:
+        *
+        *   root_powers[m + i]
+        */
+        const size_t lanes = static_cast<size_t>(svcntd());
+        const svbool_t pg_all = svptrue_b64();
+        const svuint64_t modulus_vec = svdup_n_u64(modulus);
+        const svuint64_t twice_modulus_vec = svdup_n_u64(twice_modulus);
+        size_t i = 0;
+
+        /*
+        * Each SVE vector processes `lanes` independent butterflies.
+        *
+        * svld2_u64 deinterleaves:
+        *
+        *   x0, y0, x1, y1
+        *
+        * into:
+        *
+        *   x = [x0, x1]
+        *   y = [y0, y1]
+        *
+        * on Grace, where svcntd() == 2.
+        */
+        AXHEL_UNROLL(4)
+        for (; i + lanes <= m; i += lanes) {
+            const svuint64x2_t xy = svld2_u64(pg_all, operand + (i << 1));
+            const svuint64_t x = svget2_u64(xy, 0);
+            const svuint64_t y = svget2_u64(xy, 1);
+
+            /*
+            * NTTMultiplyOperand contains:
+            *
+            *   operand
+            *   quotient
+            *
+            * Consecutive entries therefore form an interleaved sequence:
+            *
+            *   root0, quotient0, root1, quotient1, ...
+            */
+            const uint64_t *root_words = reinterpret_cast<const uint64_t *>(root_powers + m + i);
+            const svuint64x2_t roots = svld2_u64(pg_all, root_words);
+            const svuint64_t root_vec = svget2_u64(roots, 0);
+            const svuint64_t root_quotient_vec = svget2_u64(roots, 1);
+
+            svuint64_t result_x;
+            svuint64_t result_y;
+
+            ForwardButterflyVector(pg_all, x, y, root_vec, root_quotient_vec, modulus_vec, twice_modulus_vec, result_x, result_y);
+
+            const svuint64x2_t results = svcreate2_u64(result_x, result_y);
+
+            svst2_u64(pg_all, operand + (i << 1), results);
+        }
+
+        /*
+        * Generic tail.
+        *
+        * For the usual power-of-two NTT sizes 
+        * this branch should not be entered because m is divisible
+        * by svcntd().
+        */
+        if (i < m) {
+            const svbool_t pg_tail = svwhilelt_b64(static_cast<uint64_t>(i), static_cast<uint64_t>(m));
+            const svuint64x2_t xy = svld2_u64(pg_tail, operand + (i << 1));
+            const svuint64_t x = svget2_u64(xy, 0);
+            const svuint64_t y = svget2_u64(xy, 1);
+            const uint64_t *root_words = reinterpret_cast<const uint64_t *>(root_powers + m + i);
+            const svuint64x2_t roots = svld2_u64(pg_tail, root_words);
+            const svuint64_t root_vec = svget2_u64(roots, 0);
+            const svuint64_t root_quotient_vec = svget2_u64(roots, 1);
+
+            svuint64_t result_x;
+            svuint64_t result_y;
+
+            ForwardButterflyVector(pg_tail, x, y, root_vec, root_quotient_vec, modulus_vec, twice_modulus_vec, result_x, result_y);
+
+            const svuint64x2_t results =svcreate2_u64(result_x, result_y);
+
+            svst2_u64(pg_tail, operand + (i << 1), results);
+        }
+    }
+
 
     inline void InverseStageScalar(
         uint64_t *__restrict operand,
@@ -283,7 +385,7 @@ namespace {
         uint64_t modulus,
         const NTTMultiplyOperand *root_powers)
     {
-       
+        
         const size_t coeff_count = size_t{ 1 } << coeff_count_power;
         const uint64_t twice_modulus = modulus << 1;
         const size_t lanes = static_cast<size_t>(svcntd());
@@ -291,23 +393,36 @@ namespace {
         size_t m = 1;
         size_t gap = coeff_count >> 1;
 
-        while (m < coeff_count) {
-            /*
-            * Use SVE only when a block contains at least one complete
-            * vector of independent butterflies.
-            */
+        /*
+        * Process every stage except the final gap = 1 stage.
+        */
+        while (gap > 1) {
             if (gap >= lanes) {
                 ForwardStageSVE(operand, m, gap, modulus, twice_modulus, root_powers);
             }
             else {
+                /*
+                * Portable fallback for hypothetical vector lengths
+                * larger than the remaining gap.
+                */
                 ForwardStageScalar(operand, m, gap, modulus, twice_modulus, root_powers);
             }
 
             m <<= 1;
             gap >>= 1;
         }
-    }
 
+        /*
+        * At this point:
+        *
+        *   gap == 1
+        *   m   == coeff_count / 2
+        *
+        * Process the final stage with interleaved SVE loads/stores.
+        */
+        ForwardFinalStageSVE(operand, m, modulus, twice_modulus, root_powers);
+    }
+    
     
     void InverseNTTNegacyclicHarveyLazySVE(
         uint64_t *operand,
