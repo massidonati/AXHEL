@@ -21,6 +21,7 @@ namespace axhel {
     inline svuint64_t BarrettReduceUInt64SVEKernel(svbool_t pg, svuint64_t op_seg, uint64_t mod, uint64_t barr_factor) {
         const svuint64_t vmod = svdup_n_u64(mod);
         const svuint64_t v2mod = svdup_n_u64(2 * mod);
+        const svuint64_t v4mod = svdup_n_u64(4 * mod);
         const svuint64_t vbarr = svdup_n_u64(barr_factor);
         const svuint64_t zero = svdup_n_u64(0);
 
@@ -31,7 +32,7 @@ namespace axhel {
         svuint64_t q_mul = svmul_u64_x(pg, q_hat, vmod);
         svuint64_t z = svsub_u64_x(pg, op_seg, q_mul);
 
-        z = ReduceInputSVE<4>(pg, z, vmod, v2mod);
+        z = ReduceInputSVE<4>(pg, z, vmod, v2mod, v4mod);
 
         return z;
     }

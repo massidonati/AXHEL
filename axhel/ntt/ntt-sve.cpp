@@ -50,10 +50,10 @@ namespace {
         svuint64_t &result_x,
         svuint64_t &result_y) noexcept
     {
-
-        const svuint64_t guarded_x = ReduceModFactor4To2SVE(pg, x, twice_modulus);
-        result_x = svadd_u64_x(pg, guarded_x, y);
-        const svuint64_t difference = svsub_u64_x(pg, svadd_u64_x(pg, guarded_x, twice_modulus), y);
+        
+        const svuint64_t sum = svadd_u64_x(pg, x, y);
+        result_x = ReduceModFactor4To2SVE(pg, sum, twice_modulus);
+        const svuint64_t difference = svsub_u64_x(pg, svadd_u64_x(pg, x, twice_modulus), y);
         result_y = MultiplyUIntModLazySVE(pg, difference, inv_root, inv_root_quotient, modulus);
     }
 

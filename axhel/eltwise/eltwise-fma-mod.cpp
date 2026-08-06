@@ -99,6 +99,9 @@ namespace axhel {
             case 4:
                 EltwiseFMAModDispatch<4>(res, op1, op2, op3, n, mod);
                 break;
+            case 8:
+                EltwiseFMAModDispatch<8>(res, op1, op2, op3, n, mod);
+                break;
         }
     }
 
@@ -108,6 +111,8 @@ namespace axhel {
     template void EltwiseFMAModNative<2>(uint64_t*, const uint64_t*, uint64_t, const uint64_t*, uint64_t, uint64_t);
     
     template void EltwiseFMAModNative<4>(uint64_t*, const uint64_t*, uint64_t, const uint64_t*, uint64_t, uint64_t);
+
+    template void EltwiseFMAModNative<8>(uint64_t*, const uint64_t*, uint64_t, const uint64_t*, uint64_t, uint64_t);
     
 }
 }

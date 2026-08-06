@@ -22,6 +22,7 @@ namespace axhel {
         
         const svuint64_t vmod = svdup_n_u64(mod);
         const svuint64_t v2mod = svdup_n_u64(2 * mod);
+        const svuint64_t v4mod = svdup_n_u64(4 * mod);
         const svuint64_t vbarr = svdup_n_u64(barr_factor);
 
         const uint64_t lanes = svcntd();
@@ -35,8 +36,8 @@ namespace axhel {
 
             // normalize lazy inputs only when required by ModFactor
             if constexpr (ModFactor != 1) {
-                x = ReduceInputSVE<ModFactor>(pg, x, vmod, v2mod);
-                y = ReduceInputSVE<ModFactor>(pg, y, vmod, v2mod);
+                x = ReduceInputSVE<ModFactor>(pg, x, vmod, v2mod, v4mod);
+                y = ReduceInputSVE<ModFactor>(pg, y, vmod, v2mod, v4mod);
             }
 
             // SVE 64x64 -> 128 multiplication.
@@ -55,7 +56,7 @@ namespace axhel {
             svuint64_t z = svsub_u64_x(pg, prod_lo, q_mul);
 
             // final correction to [0, q)
-            z = ReduceInputSVE<4>(pg, z, vmod, v2mod);
+            z = ReduceInputSVE<4>(pg, z, vmod, v2mod, v4mod);
 
             svst1_u64(pg, res + i, z);
         }

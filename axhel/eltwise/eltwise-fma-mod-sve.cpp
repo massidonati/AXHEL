@@ -21,6 +21,7 @@ namespace axhel {
     void EltwiseFMAModSVEKernel(uint64_t* res, const uint64_t* op1, uint64_t op2, const uint64_t* op3, uint64_t n, uint64_t mod, uint64_t barr_factor) {
         const svuint64_t vmod = svdup_n_u64(mod);
         const svuint64_t v2mod = svdup_n_u64(2 * mod);
+        const svuint64_t v4mod = svdup_n_u64(4 * mod);
         const svuint64_t vbarr = svdup_n_u64(barr_factor);
 
         uint64_t op2_red = ReduceInputNative<ModFactor>(op2, mod);
@@ -35,7 +36,7 @@ namespace axhel {
             svuint64_t x = svld1_u64(pg, op1 + i);
 
             if constexpr (ModFactor != 1) {
-                x = ReduceInputSVE<ModFactor>(pg, x, vmod, v2mod);
+                x = ReduceInputSVE<ModFactor>(pg, x, vmod, v2mod, v4mod);
             }
 
             svuint64_t prod_hi;
@@ -48,13 +49,13 @@ namespace axhel {
             svuint64_t q_mul = svmul_u64_x(pg, q_hat, vmod);
             svuint64_t z = svsub_u64_x(pg, prod_lo, q_mul);
 
-            z = ReduceInputSVE<4>(pg, z, vmod, v2mod);
+            z = ReduceInputSVE<4>(pg, z, vmod, v2mod, v4mod);
 
             if(op3 != nullptr) {
                 svuint64_t add_val = svld1_u64(pg, op3 + i);
 
                 if constexpr (ModFactor != 1) {
-                    add_val = ReduceInputSVE<ModFactor>(pg, add_val, vmod, v2mod);
+                    add_val = ReduceInputSVE<ModFactor>(pg, add_val, vmod, v2mod, v4mod);
                 }
 
                 z = svadd_u64_x(pg, z, add_val);
@@ -167,6 +168,8 @@ namespace axhel {
     template void EltwiseFMAModSVE<2>(uint64_t*, const uint64_t*, uint64_t, const uint64_t*, uint64_t, uint64_t);
     
     template void EltwiseFMAModSVE<4>(uint64_t*, const uint64_t*, uint64_t, const uint64_t*, uint64_t, uint64_t);
+
+    template void EltwiseFMAModSVE<8>(uint64_t*, const uint64_t*, uint64_t, const uint64_t*, uint64_t, uint64_t);
 
 }
 }

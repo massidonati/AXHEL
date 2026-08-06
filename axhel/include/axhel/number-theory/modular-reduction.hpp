@@ -15,6 +15,16 @@
 namespace unipi {
 namespace axhel {
 
+    /// @brief Reduce a value from [0, 8q) to [0, 4q).
+    inline uint64_t ReduceModFactor8To4Native(uint64_t x, uint64_t four_times_mod) noexcept {
+        if (x >= four_times_mod)
+        {
+            x -= four_times_mod;
+        }
+        return x;
+    }
+
+    
     /// @brief Reduce a value from [0, 4q) to [0, 2q).
     inline uint64_t ReduceModFactor4To2Native( uint64_t x, uint64_t twice_mod) noexcept {
         if (x >= twice_mod) {
@@ -37,8 +47,13 @@ namespace axhel {
     template <int ModFactor>
     inline uint64_t ReduceInputNative(uint64_t x, uint64_t mod) noexcept {
         
+        // if x can be in [0, 8q), subtract 4q
+        if constexpr (ModFactor == 8) {
+            x = ReduceModFactor8To4Native(x, 4 * mod);
+        }
+        
         // if x can be in [0, 4q), subtract 2q
-        if constexpr (ModFactor == 4) {
+        if constexpr (ModFactor >= 4) {
             x = ReduceModFactor4To2Native(x, 2 * mod);
         }
 
@@ -52,12 +67,19 @@ namespace axhel {
 
     #ifdef AXHEL_HAS_SVE
 
+    /// @brief Reduce lane-wise values from [0, 8q) to [0, 4q).
+    inline svuint64_t ReduceModFactor8To4SVE(svbool_t pg, svuint64_t x, svuint64_t four_times_mod) noexcept {
+        const svbool_t ge_four_times_mod = svcmpge_u64(pg, x, four_times_mod);
+        return svsub_u64_m(ge_four_times_mod, x, four_times_mod);
+    }
+   
 
     /// @brief Reduce lane-wise values from [0, 4q) to [0, 2q).
     inline svuint64_t ReduceModFactor4To2SVE(svbool_t pg, svuint64_t x, svuint64_t twice_mod) noexcept {
         const svbool_t ge_twice_mod = svcmpge_u64(pg, x, twice_mod);
         return svsub_u64_m(ge_twice_mod, x, twice_mod);
     }
+
 
     /// @brief Reduce lane-wise values from [0, 2q) to [0, q).
     inline svuint64_t ReduceModFactor2To1SVE(svbool_t pg, svuint64_t x, svuint64_t modulus) noexcept {
@@ -68,10 +90,15 @@ namespace axhel {
 
     /// @brief Reduce input value from [0, ModFactor*q) to [0, q). For ModFactor = 1 this is intentionally a no-op. 
     template <int ModFactor>
-    inline svuint64_t ReduceInputSVE(svbool_t pg, svuint64_t x, svuint64_t vmod, svuint64_t v2mod) {
+    inline svuint64_t ReduceInputSVE(svbool_t pg, svuint64_t x, svuint64_t vmod, svuint64_t v2mod, svuint64_t v4mod) {
 
+        // if x can be in [0, 8q), subtract 4q
+        if constexpr (ModFactor == 8) {
+            x = ReduceModFactor8To4SVE(pg, x, v4mod);
+        }       
+        
         // if x can be in [0, 4q), subtract 2q
-        if constexpr (ModFactor == 4) {
+        if constexpr (ModFactor >= 4) {
             x = ReduceModFactor4To2SVE(pg, x, v2mod);
         }
 
