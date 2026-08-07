@@ -20,6 +20,10 @@ namespace axhel {
 
 namespace {
 
+    /* ********************************* */
+    /*  FORWARD NTT                      */
+    /* ********************************* */
+
     inline void ForwardButterflyVector(
         svbool_t pg,
         svuint64_t x,
@@ -36,25 +40,6 @@ namespace {
         const svuint64_t transformed_y = MultiplyUIntModLazySVE(pg, y, root, root_quotient, modulus);
         result_x = svadd_u64_x(pg, guarded_x, transformed_y);
         result_y = svsub_u64_x(pg, svadd_u64_x(pg, guarded_x, twice_modulus), transformed_y);
-    }
-
-
-    inline void InverseButterflyVector(
-        svbool_t pg,
-        svuint64_t x,
-        svuint64_t y,
-        svuint64_t inv_root,
-        svuint64_t inv_root_quotient,
-        svuint64_t modulus,
-        svuint64_t twice_modulus,
-        svuint64_t &result_x,
-        svuint64_t &result_y) noexcept
-    {
-        
-        const svuint64_t sum = svadd_u64_x(pg, x, y);
-        result_x = ReduceModFactor4To2SVE(pg, sum, twice_modulus);
-        const svuint64_t difference = svsub_u64_x(pg, svadd_u64_x(pg, x, twice_modulus), y);
-        result_y = MultiplyUIntModLazySVE(pg, difference, inv_root, inv_root_quotient, modulus);
     }
 
 
@@ -138,6 +123,100 @@ namespace {
 
                 svst1_u64(pg_tail, x_ptr + j, result_x);
                 svst1_u64(pg_tail, y_ptr + j, result_y);
+            }
+        }
+    }
+
+
+    /*
+     * Forward NTT stage specialized for SVE VL=128.
+     *
+     * Processes two independent SVE vectors per loop iteration
+     * to expose additional instruction-level parallelism.
+     *
+     * VL=128:
+     *   svcntd() == 2
+     *
+     * This kernel is used only by ForwardTransformSVE<2>().
+     */
+    inline void ForwardStageSVE128(
+        uint64_t *__restrict operand,
+        size_t m,
+        size_t gap,
+        uint64_t modulus,
+        uint64_t twice_modulus,
+        const NTTMultiplyOperand *__restrict root_powers) noexcept
+    {
+        
+        constexpr size_t lanes = 2;
+        constexpr size_t ilp_step = 2 * lanes;
+        const svbool_t pg_all = svptrue_b64();
+        const svuint64_t modulus_vec = svdup_n_u64(modulus);
+        const svuint64_t twice_modulus_vec = svdup_n_u64(twice_modulus);
+
+        for (size_t i = 0; i < m; ++i) {
+            const NTTMultiplyOperand &root = root_powers[m + i];
+            const svuint64_t root_vec = svdup_n_u64(root.operand);
+            const svuint64_t root_quotient_vec =  svdup_n_u64(root.quotient);
+            
+            const size_t block_start = i * (gap << 1);
+            uint64_t *x_ptr = operand + block_start;
+            uint64_t *y_ptr = x_ptr + gap;
+
+            size_t j = 0;
+
+            /*
+             * Main ILP2 path:
+             *
+             * process two independent SVE vectors in parallel.
+             */
+            AXHEL_UNROLL(2)
+            for (; j + ilp_step <= gap; j += ilp_step) {
+                const svuint64_t x0 = svld1_u64(pg_all, x_ptr + j);
+                const svuint64_t y0 = svld1_u64(pg_all, y_ptr + j);
+                const svuint64_t x1 = svld1_u64(pg_all, x_ptr + j + lanes);
+                const svuint64_t y1 = svld1_u64(pg_all, y_ptr + j + lanes);
+
+                svuint64_t result_x0;
+                svuint64_t result_y0;
+                svuint64_t result_x1;
+                svuint64_t result_y1;
+
+                ForwardButterflyVector(pg_all, x0, y0, root_vec, root_quotient_vec, modulus_vec, twice_modulus_vec, result_x0, result_y0);
+                ForwardButterflyVector( pg_all, x1, y1, root_vec, root_quotient_vec, modulus_vec, twice_modulus_vec, result_x1, result_y1);
+
+                svst1_u64(pg_all, x_ptr + j, result_x0);
+                svst1_u64(pg_all, y_ptr + j, result_y0);
+                svst1_u64(pg_all, x_ptr + j + lanes, result_x1);
+                svst1_u64(pg_all, y_ptr + j + lanes, result_y1);
+            }
+
+            /*
+             * One remaining complete VL128 vector.
+             */
+            if (j + lanes <= gap) {
+                const svuint64_t x = svld1_u64( pg_all, x_ptr + j);
+                const svuint64_t y = svld1_u64(pg_all, y_ptr + j);
+
+                svuint64_t result_x;
+                svuint64_t result_y;
+
+                ForwardButterflyVector(pg_all, x, y, root_vec, root_quotient_vec, modulus_vec, twice_modulus_vec, result_x, result_y);
+
+                svst1_u64(pg_all, x_ptr + j, result_x);
+                svst1_u64(pg_all, y_ptr + j, result_y);
+
+                j += lanes;
+            }
+
+            /*
+             * Defensive scalar remainder.
+             *
+             * On the VL128 SEAL path this should not normally
+             * execute because this helper is used only for gap >= 4.
+             */
+            for (; j < gap; ++j) {
+                detail::ForwardButterflyNative(x_ptr[j], y_ptr[j], root, modulus, twice_modulus);
             }
         }
     }
@@ -467,7 +546,7 @@ namespace {
          *   gap = 1
          */
         while (gap > 2) {
-            ForwardStageSVE(operand, m, gap, modulus, twice_modulus, root_powers);
+            ForwardStageSVE128(operand, m, gap, modulus, twice_modulus, root_powers);
 
             m <<= 1;
             gap >>= 1;
@@ -487,6 +566,29 @@ namespace {
              */
             ForwardFinalStageSVE(operand, m, modulus, twice_modulus, root_powers);
         }
+    }
+
+
+    /* ********************************* */
+    /*  INVERSE NTT                      */
+    /* ********************************* */
+
+    inline void InverseButterflyVector(
+        svbool_t pg,
+        svuint64_t x,
+        svuint64_t y,
+        svuint64_t inv_root,
+        svuint64_t inv_root_quotient,
+        svuint64_t modulus,
+        svuint64_t twice_modulus,
+        svuint64_t &result_x,
+        svuint64_t &result_y) noexcept
+    {
+        
+        const svuint64_t sum = svadd_u64_x(pg, x, y);
+        result_x = ReduceModFactor4To2SVE(pg, sum, twice_modulus);
+        const svuint64_t difference = svsub_u64_x(pg, svadd_u64_x(pg, x, twice_modulus), y);
+        result_y = MultiplyUIntModLazySVE(pg, difference, inv_root, inv_root_quotient, modulus);
     }
 
 
@@ -512,6 +614,7 @@ namespace {
             }
         }
     }
+
 
     inline void InverseStageSVE(
         uint64_t *__restrict operand,
@@ -571,6 +674,240 @@ namespace {
     }
 
 
+    inline void InverseInitialStageSVE128(
+        uint64_t *__restrict operand,
+        size_t m,
+        uint64_t modulus,
+        uint64_t twice_modulus,
+        const NTTMultiplyOperand *__restrict inv_root_powers,
+        size_t &root_index) noexcept
+    {
+        /*
+        * Initial inverse stage:
+        *
+        *   gap = 1
+        *   m   = coeff_count / 2
+        *
+        * Layout:
+        *
+        *   x0, y0, x1, y1, ...
+        *
+        * VL=128 -> two uint64_t lanes -> two butterflies
+        * per vector.
+        */
+        const svbool_t pg_all = svptrue_b64();
+        const svuint64_t modulus_vec = svdup_n_u64(modulus);
+        const svuint64_t twice_modulus_vec = svdup_n_u64(twice_modulus);
+
+        AXHEL_UNROLL(4)
+        for (size_t i = 0; i < m; i += 2) {
+
+            /*
+            * Load:
+            *
+            *   x0,y0,x1,y1
+            *
+            * as:
+            *
+            *   x = [x0,x1]
+            *   y = [y0,y1]
+            */
+            const svuint64x2_t xy = svld2_u64(pg_all, operand + (i << 1));
+            const svuint64_t x = svget2_u64(xy, 0);
+            const svuint64_t y = svget2_u64(xy, 1);
+
+            /*
+            * Load two consecutive inverse roots:
+            *
+            *   root0, quotient0,
+            *   root1, quotient1
+            */
+            const uint64_t *root_words = reinterpret_cast<const uint64_t *>(inv_root_powers + root_index + i);
+            const svuint64x2_t roots = svld2_u64(pg_all, root_words);
+            const svuint64_t inv_root_vec = svget2_u64(roots, 0);
+            const svuint64_t inv_root_quotient_vec = svget2_u64(roots, 1);
+
+            svuint64_t result_x;
+            svuint64_t result_y;
+
+            InverseButterflyVector(pg_all, x, y, inv_root_vec, inv_root_quotient_vec, modulus_vec, twice_modulus_vec, result_x, result_y);
+
+            /*
+            * Restore interleaved layout:
+            *
+            *   result_x0,result_y0,
+            *   result_x1,result_y1
+            */
+            const svuint64x2_t results = svcreate2_u64(result_x, result_y);
+
+            svst2_u64(pg_all, operand + (i << 1), results);
+        }
+
+        root_index += m;
+    }
+
+
+    inline void InverseInitialTwoStagesSVE128(
+        uint64_t *__restrict operand,
+        size_t coeff_count,
+        uint64_t modulus,
+        uint64_t twice_modulus,
+        const NTTMultiplyOperand *__restrict inv_root_powers,
+        size_t &root_index) noexcept
+    {
+        /*
+        * Fuse the first two ordinary inverse NTT stages:
+        *
+        *   stage 1: gap = 1, m = N/2
+        *   stage 2: gap = 2, m = N/4
+        *
+        * Specialized for:
+        *
+        *   SVE VL = 128 bits
+        *   svcntd() = 2
+        *
+        * Four coefficients are processed per iteration:
+        *
+        *   a, b, c, d
+        *
+        * Stage gap=1:
+        *
+        *   (a,b) -> (u0,v0)
+        *   (c,d) -> (u1,v1)
+        *
+        * Stage gap=2:
+        *
+        *   (u0,u1)
+        *   (v0,v1)
+        */
+        const svbool_t pg_all = svptrue_b64();
+        const svuint64_t modulus_vec = svdup_n_u64(modulus);
+        const svuint64_t twice_modulus_vec = svdup_n_u64(twice_modulus);
+
+        /*
+        * Number of roots consumed by the two stages.
+        */
+        const size_t first_stage_m = coeff_count >> 1;
+        const size_t second_stage_m = coeff_count >> 2;
+
+        /*
+        * Save the table positions corresponding to the two stages.
+        *
+        * At entry root_index is normally 1.
+        *
+        * Stage gap=1 consumes N/2 roots.
+        * Stage gap=2 starts immediately afterwards.
+        */
+        const size_t first_stage_root_index = root_index;
+        const size_t second_stage_root_index = root_index + first_stage_m;
+
+        /*
+        * Each iteration processes one four-coefficient block.
+        */
+        AXHEL_UNROLL(4)
+        for (size_t i = 0; i < second_stage_m; ++i) {
+            
+            uint64_t *block = operand + (i << 2);
+
+            /*
+            * block:
+            *
+            *   [a, b, c, d]
+            *
+            * svld2 deinterleaves it as:
+            *
+            *   x = [a, c]
+            *   y = [b, d]
+            *
+            * These are exactly the two butterflies of gap=1:
+            *
+            *   lane 0 -> (a,b)
+            *   lane 1 -> (c,d)
+            */
+            const svuint64x2_t xy = svld2_u64(pg_all, block);
+            const svuint64_t x = svget2_u64(xy, 0);
+            const svuint64_t y = svget2_u64(xy, 1);
+
+            /*
+            * Stage gap=1 uses two different inverse roots:
+            *
+            *   inv_root[2*i]
+            *   inv_root[2*i + 1]
+            *
+            * NTTMultiplyOperand layout:
+            *
+            *   operand, quotient
+            *
+            * svld2 therefore gives:
+            *
+            *   root      = [root0, root1]
+            *   quotient  = [quot0, quot1]
+            */
+            const uint64_t *first_root_words = reinterpret_cast<const uint64_t *>(inv_root_powers + first_stage_root_index + (i << 1));
+            const svuint64x2_t first_roots = svld2_u64(pg_all, first_root_words);
+            const svuint64_t first_root_vec = svget2_u64(first_roots, 0);
+            const svuint64_t first_root_quotient_vec = svget2_u64(first_roots, 1);
+
+            svuint64_t first_x;
+            svuint64_t first_y;
+
+            InverseButterflyVector(pg_all, x, y, first_root_vec, first_root_quotient_vec, modulus_vec, twice_modulus_vec, first_x, first_y);
+
+            /*
+            * Results after gap=1:
+            *
+            *   first_x = [u0, u1]
+            *   first_y = [v0, v1]
+            *
+            * Memory would normally contain:
+            *
+            *   u0, v0, u1, v1
+            *
+            * For gap=2 we instead need directly:
+            *
+            *   second_x = [u0, v0]
+            *   second_y = [u1, v1]
+            *
+            * Keep everything in registers.
+            */
+            const svuint64_t second_x = svtrn1_u64(first_x, first_y);
+            const svuint64_t second_y = svtrn2_u64(first_x, first_y);
+
+            /*
+            * Stage gap=2 uses one inverse root for the entire
+            * four-coefficient block, i.e. the same root for both lanes.
+            */
+            const NTTMultiplyOperand &second_root = inv_root_powers[second_stage_root_index + i];
+            const svuint64_t second_root_vec = svdup_n_u64(second_root.operand);
+            const svuint64_t second_root_quotient_vec = svdup_n_u64(second_root.quotient);
+
+            svuint64_t result_x;
+            svuint64_t result_y;
+
+            InverseButterflyVector(pg_all, second_x, second_y, second_root_vec, second_root_quotient_vec, modulus_vec, twice_modulus_vec, result_x, result_y);
+
+            /*
+            * This is exactly the layout produced by the normal
+            * gap=2 InverseStage:
+            *
+            *   result_x -> block[0], block[1]
+            *   result_y -> block[2], block[3]
+            */
+            svst1_u64(pg_all, block, result_x);
+            svst1_u64(pg_all, block + 2, result_y);
+        }
+
+        /*
+        * Preserve exactly the same root-table position as executing
+        * the two original stages independently.
+        *
+        * gap=1 consumes N/2 roots.
+        * gap=2 consumes N/4 roots.
+        */
+        root_index += first_stage_m + second_stage_m;
+    }
+
+
     inline void InverseFinalStageSVE(
         uint64_t *__restrict operand,
         size_t gap,
@@ -623,6 +960,137 @@ namespace {
         }
     }
 
+
+    template <size_t Lanes>
+    inline void InverseTransformSVE(
+        uint64_t *__restrict operand,
+        size_t coeff_count,
+        uint64_t modulus,
+        uint64_t twice_modulus,
+        const NTTMultiplyOperand *__restrict inv_root_powers,
+        NTTMultiplyOperand inv_degree_modulo) noexcept
+    {
+        
+        const size_t lanes = Lanes != 0 ? Lanes : static_cast<size_t>(svcntd());
+
+        size_t root_index = 1;
+        size_t m = coeff_count >> 1;
+        size_t gap = 1;
+
+        /*
+        * Generic inverse path:
+        *
+        *   gap = 1, 2, 4, ...
+        *   m   = N/2, N/4, N/8, ...
+        */
+        while (m > 1) {
+            if (gap >= lanes) {
+                InverseStageSVE(operand, m, gap, modulus, twice_modulus, inv_root_powers, root_index);
+            }
+            else {
+                InverseStageScalar(operand, m, gap, modulus, twice_modulus, inv_root_powers, root_index);
+            }
+
+            m >>= 1;
+            gap <<= 1;
+        }
+
+        /*
+        * Prepare the parameters required by the final inverse stage.
+        */
+        const NTTMultiplyOperand &final_inv_root = inv_root_powers[root_index];
+
+        uint64_t scaled_root_operand = MultiplyUIntModLazy(final_inv_root.operand, inv_degree_modulo.operand, inv_degree_modulo.quotient, modulus);
+
+        scaled_root_operand = ReduceModFactor2To1Native(scaled_root_operand, modulus);
+
+        const NTTMultiplyOperand scaled_root{
+            scaled_root_operand,
+            ComputeShoupQuotient(scaled_root_operand, modulus)
+        };
+
+        InverseFinalStageSVE(operand, gap, modulus, twice_modulus, scaled_root, inv_degree_modulo);
+    }
+
+
+    template <>
+    inline void InverseTransformSVE<2>(
+        uint64_t *__restrict operand,
+        size_t coeff_count,
+        uint64_t modulus,
+        uint64_t twice_modulus,
+        const NTTMultiplyOperand *__restrict inv_root_powers,
+        NTTMultiplyOperand inv_degree_modulo) noexcept
+    {
+        
+        size_t root_index = 1;
+        size_t m = coeff_count >> 1;
+        size_t gap = 1;
+
+        /*
+        * For VL=128 and a normal SEAL transform, fuse:
+        *
+        *   gap=1
+        *   gap=2
+        */
+        if (coeff_count >= 8) {
+            InverseInitialTwoStagesSVE128(operand, coeff_count, modulus, twice_modulus, inv_root_powers, root_index);
+
+            /*
+            * Two ordinary stages have been completed:
+            *
+            * initial:
+            *   m   = N/2
+            *   gap = 1
+            *
+            * after two stages:
+            *   m   = N/8
+            *   gap = 4
+            */
+            m >>= 2;
+            gap <<= 2;
+        }
+        else if (coeff_count >= 4) {
+
+            /*
+            * Defensive fallback: only one ordinary stage exists before
+            * the special final stage.
+            */
+            InverseInitialStageSVE128(operand, m, modulus, twice_modulus, inv_root_powers, root_index);
+
+            m >>= 1;
+            gap <<= 1;
+        }
+
+        /*
+        * For VL=128 every remaining ordinary stage has gap >= 2,
+        * therefore complete SVE vectors can be used.
+        */
+        while (m > 1) {
+            InverseStageSVE(operand, m, gap, modulus, twice_modulus, inv_root_powers, root_index);
+
+            m >>= 1;
+            gap <<= 1;
+        }
+
+        /*
+        * Same final preparation used by the generic path.
+        */
+        const NTTMultiplyOperand &final_inv_root = inv_root_powers[root_index];
+
+        uint64_t scaled_root_operand = MultiplyUIntModLazy(final_inv_root.operand, inv_degree_modulo.operand, inv_degree_modulo.quotient, modulus);
+
+        scaled_root_operand = ReduceModFactor2To1Native(scaled_root_operand, modulus);
+
+        const NTTMultiplyOperand scaled_root{
+            scaled_root_operand,
+            ComputeShoupQuotient(scaled_root_operand, modulus)
+        };
+
+        InverseFinalStageSVE(operand, gap, modulus, twice_modulus, scaled_root, inv_degree_modulo);
+    }
+
+
 } // namespace
 
 
@@ -650,8 +1118,7 @@ namespace {
 
         default:
             /*
-            * Vector-length-agnostic fallback for all other SVE
-            * vector lengths.
+            * Vector-length-agnostic fallback for all other SVE vector lengths.
             */
             ForwardTransformSVE<0>(operand, coeff_count, modulus, twice_modulus, root_powers);
             break;
@@ -666,39 +1133,28 @@ namespace {
         const NTTMultiplyOperand *inv_root_powers,
         NTTMultiplyOperand inv_degree_modulo)
     {
-
+        
         const size_t coeff_count = size_t{ 1 } << coeff_count_power;
         const uint64_t twice_modulus = modulus << 1;
         const size_t lanes = static_cast<size_t>(svcntd());
 
-        size_t root_index = 1;
-        size_t m = coeff_count >> 1;
-        size_t gap = 1;
-
-        while (m > 1) {
-            if (gap >= lanes) {
-                InverseStageSVE(operand, m, gap, modulus, twice_modulus, inv_root_powers, root_index);
-            } 
-            else {
-                InverseStageScalar(operand, m, gap, modulus, twice_modulus, inv_root_powers, root_index);
-            }
-
-            m >>= 1;
-            gap <<= 1;
+        /*
+        * Runtime selection of a compile-time-specialized kernel
+        */
+        switch (lanes) {
+            /*
+            * SVE VL=128:
+            */
+        case 2:
+            InverseTransformSVE<2>(operand, coeff_count, modulus, twice_modulus, inv_root_powers, inv_degree_modulo);
+            break;
+            /*
+            * Vector-length-agnostic fallback for all other SVE vector lengths.
+            */
+        default:
+            InverseTransformSVE<0>(operand, coeff_count, modulus, twice_modulus, inv_root_powers, inv_degree_modulo);
+            break;
         }
-
-        const NTTMultiplyOperand &final_inv_root = inv_root_powers[root_index];
-
-        uint64_t scaled_root_operand = MultiplyUIntModLazy(final_inv_root.operand, inv_degree_modulo.operand, inv_degree_modulo.quotient, modulus);
-
-        scaled_root_operand = ReduceModFactor2To1Native(scaled_root_operand, modulus);
-
-        const NTTMultiplyOperand scaled_root{
-            scaled_root_operand,
-            ComputeShoupQuotient(scaled_root_operand, modulus)
-        };
-
-        InverseFinalStageSVE(operand, gap, modulus, twice_modulus, scaled_root, inv_degree_modulo);
     }
 
 } // namespace axhel
