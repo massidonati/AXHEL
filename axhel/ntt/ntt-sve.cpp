@@ -172,16 +172,11 @@ namespace {
         /*
         * Each SVE vector processes `lanes` independent butterflies.
         *
-        * svld2_u64 deinterleaves:
+        * svld2_u64 works for every supported SVE vector length:
         *
-        *   x0, y0, x1, y1
-        *
-        * into:
-        *
-        *   x = [x0, x1]
-        *   y = [y0, y1]
-        *
-        * on Grace, where svcntd() == 2.
+        *   VL=128 -> 2 butterflies
+        *   VL=256 -> 4 butterflies
+        *   VL=512 -> 8 butterflies
         */
         AXHEL_UNROLL(4)
         for (; i + lanes <= m; i += lanes) {
@@ -393,6 +388,108 @@ namespace {
     }
 
 
+    /*
+     * Generic forward NTT implementation for a compile-time
+     * number of uint64_t SVE lanes.
+     *
+     * Lanes == 0 means that the vector length must be obtained
+     * at runtime through svcntd().
+     *
+     * The generic path processes all stages down to gap = 1,
+     * then uses the vector-length-independent final-stage kernel.
+     */
+    template <size_t Lanes>
+    inline void ForwardTransformSVE(
+        uint64_t *__restrict operand,
+        size_t coeff_count,
+        uint64_t modulus,
+        uint64_t twice_modulus,
+        const NTTMultiplyOperand *__restrict root_powers) noexcept
+    {
+        
+        const size_t lanes = Lanes != 0 ? Lanes : static_cast<size_t>(svcntd());
+
+        size_t m = 1;
+        size_t gap = coeff_count >> 1;
+
+        /*
+         * Process every stage except the final gap = 1 stage.
+         */
+        while (gap > 1) {
+            if (gap >= lanes) {
+                ForwardStageSVE(operand, m, gap, modulus, twice_modulus, root_powers);
+            }
+            else {
+                /*
+                 * This is required only when the number of
+                 * coefficients in a butterfly block is smaller
+                 * than the current SVE vector length.
+                 */
+                ForwardStageScalar(operand, m, gap, modulus, twice_modulus, root_powers);
+            }
+
+            m <<= 1;
+            gap >>= 1;
+        }
+
+        /*
+         * Vector-length-independent final stage introduced
+         */
+        ForwardFinalStageSVE(operand, m, modulus, twice_modulus, root_powers);
+    }
+
+    
+    /*
+     * Specialized forward NTT implementation for:
+     *
+     *   SVE VL = 128 bits
+     *   svcntd() = 2
+     *
+     * The final gap = 2 and gap = 1 stages are fused by
+     * ForwardFinalTwoStagesSVE128.
+     */
+    template <>
+    inline void ForwardTransformSVE<2>(
+        uint64_t *__restrict operand,
+        size_t coeff_count,
+        uint64_t modulus,
+        uint64_t twice_modulus,
+        const NTTMultiplyOperand *__restrict root_powers) noexcept
+    {
+        
+        size_t m = 1;
+        size_t gap = coeff_count >> 1;
+
+        /*
+         * Process all stages preceding:
+         *
+         *   gap = 2
+         *   gap = 1
+         */
+        while (gap > 2) {
+            ForwardStageSVE(operand, m, gap, modulus, twice_modulus, root_powers);
+
+            m <<= 1;
+            gap >>= 1;
+        }
+
+        /*
+         * A transform with at least four coefficients reaches
+         * the fused final-two-stage kernel.
+         */
+        if (coeff_count >= 4) {
+            ForwardFinalTwoStagesSVE128(operand, coeff_count, modulus, twice_modulus, root_powers);
+        }
+        else {
+            /*
+             * Defensive fallback for very small transforms.
+             * Normal SEAL parameter sets never enter this branch.
+             */
+            ForwardFinalStageSVE(operand, m, modulus, twice_modulus, root_powers);
+        }
+    }
+
+
     inline void InverseStageScalar(
         uint64_t *__restrict operand,
         size_t m,
@@ -529,7 +626,7 @@ namespace {
 } // namespace
 
 
-void NTTNegacyclicHarveyLazySVE(
+    void NTTNegacyclicHarveyLazySVE(
         uint64_t *operand,
         size_t coeff_count_power,
         uint64_t modulus,
@@ -540,45 +637,24 @@ void NTTNegacyclicHarveyLazySVE(
         const uint64_t twice_modulus = modulus << 1;
         const size_t lanes = static_cast<size_t>(svcntd());
 
-        size_t m = 1;
-        size_t gap = coeff_count >> 1;
-
         /*
-        *   Fused last two stages for VL=128 bits
+        * Runtime selection of a compile-time-specialized kernel.
         */
-        if (lanes == 2 && coeff_count >= 4) {
+        switch (lanes) {
+        case 2:
             /*
-            *   All stages before gap = 2 or 1
+            * SVE VL=128:
             */
-            while (gap > 2) {
-                ForwardStageSVE(operand, m, gap, modulus, twice_modulus, root_powers);
+            ForwardTransformSVE<2>(operand, coeff_count, modulus, twice_modulus, root_powers);
+            break;
 
-                m <<= 1;
-                gap >>= 1;
-            }
-
+        default:
             /*
-            *   Specialized microkernel 
+            * Vector-length-agnostic fallback for all other SVE
+            * vector lengths.
             */
-            ForwardFinalTwoStagesSVE128(operand, coeff_count, modulus, twice_modulus, root_powers);
-        }
-        else {
-            /*
-            *   Generic vector-length-independent path
-            */
-            while (gap > 1) {
-                if (gap >= lanes) {
-                    ForwardStageSVE(operand, m, gap, modulus, twice_modulus, root_powers);
-                }
-                else {
-                    ForwardStageScalar(operand, m, gap, modulus, twice_modulus, root_powers);
-                }
-
-                m <<= 1;
-                gap >>= 1;
-            }
-
-            ForwardFinalStageSVE(operand, m, modulus, twice_modulus, root_powers);
+            ForwardTransformSVE<0>(operand, coeff_count, modulus, twice_modulus, root_powers);
+            break;
         }
     }
     
