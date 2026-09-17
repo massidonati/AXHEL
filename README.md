@@ -85,49 +85,49 @@ AXHEL supports building from source using the CMake build system. The following 
 
 1. **Navigate to the project root directory.**
 
-After cloning or downloading the repository:
+    After cloning or downloading the repository:
 
-```bash
-cd axhel
-```
+    ```bash
+    cd axhel
+    ```
 
 2. **Configure the library.**
 
-```bash
-cmake -S . -B build
-```
-This creates a Release build targeting the native CPU with the default AXHEL configuration.
+    ```bash
+    cmake -S . -B build
+    ```
+    This creates a Release build targeting the native CPU with the default AXHEL configuration.
 
-Additional compile-time options can be specified using `-D`. 
+    Additional compile-time options can be specified using `-D`. 
 
-For example, to install AXHEL in a custom location, configure the build with:
+    For example, to install AXHEL in a custom location, configure the build with:
 
-```bash
-cmake -S . -B build -DCMAKE_INSTALL_PREFIX=/path/to/install
-```
+    ```bash
+    cmake -S . -B build -DCMAKE_INSTALL_PREFIX=/path/to/install
+    ```
 
-For example, to build AXHEL for a Neoverse V1 Arm CPU:
+    For example, to build AXHEL for a Neoverse V1 Arm CPU:
 
-```bash
-cmake -S . -B build -DAXHEL_CPU=neoverse-v1
-```
+    ```bash
+    cmake -S . -B build -DAXHEL_CPU=neoverse-v1
+    ```
 
 3. **Build the library.**
 
-```bash
-cmake --build build
-```
+    ```bash
+    cmake --build build
+    ```
 
-This command builds the AXHEL library and any enabled targets in the `build/` directory.
+    This command builds the AXHEL library and any enabled targets in the `build/` directory.
 
 4. **Install the library.**
 
-```bash
-cmake --install build
-```
+    ```bash
+    cmake --install build
+    ```
 
-The installation includes the AXHEL library, public headers, CMake package configuration files, and exported CMake targets, 
-allowing AXHEL to be easily integrated into external CMake projects using `find_package(AXHEL)`.
+    The installation includes the AXHEL library, public headers, CMake package configuration files, and exported CMake targets, 
+    allowing AXHEL to be easily integrated into external CMake projects using `find_package(AXHEL)`.
 
 ## Debugging
 
