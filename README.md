@@ -156,6 +156,24 @@ Run the example:
 
 AXHEL is built automatically as part of the example build and does not need to be installed separately.
 
+## Testing
+
+AXHEL includes a deterministic regression suite covering both the Native and SVE backends. The tests validate the public modular arithmetic and NTT APIs, internal arithmetic helpers, boundary conditions, aliasing, and SVE-specific implementations.
+
+The regression suite requires [GoogleTest](https://github.com/google/googletest). 
+
+From the AXHEL root folder, run the complete regression suite with:
+
+```bash
+chmod +x tests/scripts/*.sh
+./tests/scripts/run-regression.sh
+```
+
+The script builds and tests both the Native and SVE backends using separate Release configurations.
+
+> [!NOTE]
+> The SVE regression requires an SVE-capable target. For the complete regression matrix, configuration options, and advanced usage, see the [tests README](tests/README.md).
+
 
 ## Debugging
 

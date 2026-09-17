@@ -1,187 +1,190 @@
-# AXHEL deterministic extended regression suite — V5
+# AXHEL Tests
 
-V5 intentionally provides **one test mode only: regression**. There is no smoke,
-exhaustive, or stress mode. The regression matrix is fixed and deterministic so
-that every execution exercises the same cases in the same order.
+AXHEL includes a deterministic regression suite for validating the correctness of the Native and SVE implementations.
 
-## Design goals
+The tests cover the public modular arithmetic and Number Theoretic Transform (NTT) APIs together with selected internal arithmetic primitives used by the optimized backends. The suite is intended to detect functional regressions after changes to the AXHEL implementation.
 
-- catch functional regressions in both Native and SVE backends;
-- test public APIs against independent mathematical oracles;
-- directly test critical Native/SVE helpers and NTT butterflies;
-- exercise the complete HE-relevant Barrett bit-width range through 62 bits;
-- cover every SVE `ShiftRight128LowPart<Shift>` specialization from 1 through 60;
-- use multiple deterministic moduli for critical upper HE bit-widths;
-- detect tail/off-by-one writes with guard canaries;
-- keep the suite practical enough to run after every meaningful code change.
+## Test coverage
 
-## Fixed regression matrix
+The regression suite covers:
 
-### General modulus classes
+- element-wise modular addition and subtraction, including vector-vector and vector-scalar forms;
+- modular multiplication and fused multiply-add;
+- modular reduction for the supported input and output ranges;
+- forward and inverse NTT operations, including lazy and normalized transforms;
+- in-place and out-of-place execution;
+- aliasing, unaligned buffers, boundary lengths, and zero-length inputs;
+- Native arithmetic and NTT helpers;
+- SVE arithmetic helpers and NTT implementations when SVE is available;
+- range and round-trip properties of the NTT;
+- polynomial multiplication checked against an independent negacyclic convolution reference.
 
-    20, 30, 40, 50, 52, 55, 59, 60, 61, 62 bits
+The tests use deterministic input generation so that repeated executions exercise the same test cases.
 
-### Barrett dispatch coverage
+Guard values are also used around selected buffers to detect out-of-bounds and off-by-one writes.
 
-`EltwiseMulMod`, `EltwiseFMAMod`, and arbitrary-uint64 `EltwiseReduceMod`
-exercise every modulus bit-width:
+## Requirements
 
-    20, 21, 22, ..., 61, 62 bits
+The test suite uses [GoogleTest](https://github.com/google/googletest).
 
-This maps to all HE-relevant public Barrett dispatch shifts:
+For example, On Ubuntu it can be installed with:
 
-    Shift = BitWidth(q) - 2 = 18 ... 60
+```bash
+sudo apt update
+sudo apt install libgtest-dev
+```
 
-The SVE white-box arithmetic test additionally instantiates and validates
-`ShiftRight128LowPart<Shift>` for **every Shift from 1 through 60**.
+Alternatively, GoogleTest can be downloaded automatically by CMake by configuring AXHEL with:
 
-For the critical upper widths:
+```bash
+-DAXHEL_TEST_FETCH_GTEST=ON
+```
 
-    50, 52, 59, 60, 61, 62 bits
+## Test configuration options
 
-three deterministic NTT-friendly moduli are used: one near the lower quarter of
-the bit interval, one near the middle, and one near the upper end. Prime search
-is deterministic and does not use random state.
+The following CMake options control the AXHEL test build:
 
-### Element-wise lengths
+| Option | Default | Description |
+|---|:---:|---|
+| `AXHEL_TESTING` | `OFF` | Enables the AXHEL correctness and regression tests |
+| `AXHEL_TEST_FETCH_GTEST` | `OFF` | Downloads GoogleTest if it is not available on the system |
+| `AXHEL_TEST_FORCE_NATIVE` | `OFF` | Forces the Native backend for a test build |
+| `AXHEL_CPU` | `native` | Selects the Arm CPU target passed to the compiler through `-mcpu` |
 
-The matrix includes zero/small lengths, HE-sized vectors through 32768, their
-N-1/N/N+1 boundaries, and SVE/unroll boundaries around:
+`AXHEL_TEST_FORCE_NATIVE` is valid only when `AXHEL_TESTING=ON`.
 
-    1*VL, 2*VL, 3*VL, 4*VL, 7*VL, 8*VL, 16*VL
+Normal AXHEL builds are unaffected because testing is disabled by default.
 
-For each of those, VL-1/VL/VL+1 style cases are included where applicable.
+## Test scripts
 
-### NTT degrees
+Two helper scripts are provided in [`tests/scripts/`](scripts/):
 
-All selected powers of two from 8 through 32768 are covered:
+- `configure-tests.sh` configures and builds separate Native and SVE test configurations;
+- `run-regression.sh` builds both configurations and executes the complete regression suite.
 
-    8, 16, 32, 64, 128, 256, 512, 1024, 2048,
-    4096, 8192, 16384, 32768
+### Script defaults
 
-The forward factor-4 and inverse factor-2 lazy-input tests run across this full
-degree set.
+The scripts use the following defaults:
 
-### Deterministic random sampling
+| Setting | Default |
+|---|---|
+| C++ compiler | `g++` |
+| CPU target | `native` |
+| Build type | `Release` |
+| Native build directory | `build-test-native/` |
+| SVE build directory | `build-test-sve/` |
+| Parallel build jobs | CMake default parallelism |
 
-The regression uses the fixed seed:
+The compiler, CPU target, and number of parallel build jobs can be changed through environment variables:
 
-    0x415848454c   // "AXHEL"
+| Environment variable | Description |
+|---|---|
+| `CXX` | C++ compiler used to build AXHEL and the tests |
+| `AXHEL_CPU` | CPU target passed to AXHEL through `-mcpu` |
+| `AXHEL_TEST_JOBS` | Number of parallel build jobs |
 
-There is no seed override in V5. `std::mt19937_64` is combined with a local
-rejection-sampling helper rather than `std::uniform_int_distribution`, keeping
-the pseudo-random streams stable and independent of distribution implementation.
+For example:
 
-Main random loops use 256 repetitions; NTT round-trips use 32 repetitions and
-the independent O(N^2) polynomial oracle uses 64 repetitions.
-
-## Canary checks
-
-Element-wise Add/Sub/Mul/FMA and Reduce tests place guard words before and after
-the payload. The guards are checked after every selected tail size, including
-62-bit/factor-4 or factor-8 paths. Input payloads are also checked for accidental
-modification when they are not output aliases.
-
-This catches, among other errors:
-
-- SVE tail stores beyond `n`;
-- off-by-one writes;
-- writes before the output pointer;
-- accidental source-buffer modification.
-
-## Public API coverage
-
-- `EltwiseAddMod` vector/vector and vector/scalar
-- `EltwiseSubMod` vector/vector and vector/scalar
-- `EltwiseMulMod`, factors 1/2/4
-- `EltwiseFMAMod`, factors 1/2/4/8 and `op3 == nullptr`
-- `EltwiseReduceMod`, identity, 2->1, 4->1, 4->2, arbitrary-uint64 Barrett path
-- `NTT::ComputeForward`, normalized/lazy and factor-4 lazy input
-- `NTT::ComputeInverse`, normalized/lazy and factor-2 lazy input
-- in-place/out-of-place behavior, aliasing, unaligned buffers and n=0
-
-## Internal / white-box coverage
-
-- Native `ReduceInputNative<1/2/4/8>` and reduction helpers
-- SVE `ReduceInputSVE<1/2/4/8>` and reduction helpers
-- Shoup quotient/lazy multiplication over multiple deterministic q values
-- `MulU64ToU128SVE`
-- `ShiftRight128LowPart<1>` ... `ShiftRight128LowPart<60>`
-- Native forward/inverse Harvey butterflies
-- real SVE forward/inverse butterfly implementations through test-only hooks
-
-## Independent integration oracle
-
-The suite retains:
-
-- fixed known NTT vector N=8, q=17, psi=3;
-- normalized NTT/INTT round-trip;
-- lazy forward -> 4->2 reduction -> inverse round-trip;
-- normalized/lazy range invariants;
-- NTT -> dyadic multiply -> INTT checked against an independent O(N^2)
-  negacyclic convolution modulo `(X^N + 1, q)`.
-
-SVE correctness is therefore not inferred only by comparison with Native.
-
-## Build model
-
-Both test builds are Release (`-O3 -DNDEBUG`) and use the same
-`-mcpu=${AXHEL_CPU}` target as the AXHEL library.
-
-- Native regression build: automatic SVE capability detection still runs, then
-  `AXHEL_TEST_FORCE_NATIVE=ON` selects the Native backend only for this test build.
-- SVE regression build: `AXHEL_TEST_FORCE_NATIVE=OFF`; normal AXHEL automatic SVE
-  detection must succeed.
-
-The generated `axhel/util/defines.hpp` is the sole source of truth for
-`AXHEL_HAS_SVE`.
-
-## Prerequisite
-
-On Ubuntu:
-
-    sudo apt update
-    sudo apt install libgtest-dev
+```bash
+CXX=g++ AXHEL_CPU=neoverse-v2 AXHEL_TEST_JOBS=8 \
+./tests/scripts/configure-tests.sh
+```
 
 ## Configure and build
 
+From the AXHEL repository root:
+
+```bash
+chmod +x tests/scripts/*.sh
+./tests/scripts/configure-tests.sh
+```
+
+The script creates two clean build directories:
+
+```text
+build-test-native/
+build-test-sve/
+```
+
+Both configurations use:
+
+```text
+CMAKE_BUILD_TYPE=Release
+AXHEL_TESTING=ON
+```
+
+For the Native build, the script sets:
+
+```text
+AXHEL_TEST_FORCE_NATIVE=ON
+```
+
+while the SVE build uses the normal AXHEL SVE detection with:
+
+```text
+AXHEL_TEST_FORCE_NATIVE=OFF
+```
+
+The script verifies that the effective backend matches the requested test configuration. The SVE build therefore requires an SVE-capable compiler and target.
+
+## Run the regression suite
+
 From the repository root:
 
-    chmod +x tests/scripts/*.sh
-    ./tests/scripts/configure-tests.sh
+```bash
+./tests/scripts/run-regression.sh
+```
 
-This creates clean builds:
+If the Native or SVE build directory does not exist, the runner automatically invokes `configure-tests.sh` first.
 
-    build-test-native/
-    build-test-sve/
+Before running the tests, both configurations are rebuilt to ensure that the regression suite does not use stale binaries.
 
-On an SVE host the expected configuration is:
+The complete regression suite is then executed for both the Native and SVE backends.
 
-Native build:
+## Run individual tests
 
-    AXHEL_SVE_DETECTED: 1
-    AXHEL_HAS_SVE (effective backend): 0
+Individual test areas can be selected with CTest when debugging a specific part of AXHEL.
 
-SVE build:
+Use:
 
-    AXHEL_SVE_DETECTED: 1
-    AXHEL_HAS_SVE (effective backend): 1
+```bash
+ctest --test-dir build-test-sve -R <area> --output-on-failure
+```
 
-## Run the only test mode
+where `<area>` can be one of: `EltwiseAddMod`, `EltwiseSubMod`, `EltwiseAddSubMod`, `EltwiseMulMod`, `EltwiseFMAMod`, `EltwiseOperations`, `EltwiseReduceMod`, `NTT`, `PolynomialMultiply`, `InternalNativeReduction`, `InternalShoupNative`, `InternalNTTButterflyNative`, `InternalSVEArithmetic`, `InternalSVEReduction`, `InternalSVEShoup`, or `InternalSVEButterfly`.
 
-    ./tests/scripts/run-regression.sh
+For example:
 
-The runner rebuilds both backends before execution and then runs the complete
-fixed regression matrix on Native and SVE.
+```bash
+ctest --test-dir build-test-sve -R EltwiseMulMod --output-on-failure
+```
 
-A specific area can still be selected manually, for debugging only:
+For the Native build, replace `build-test-sve` with `build-test-native`.
 
-    ctest --test-dir build-test-sve -R EltwiseMulMod --output-on-failure
-    ctest --test-dir build-test-sve -R InternalSVE --output-on-failure
-    ctest --test-dir build-test-sve -R NTT --output-on-failure
-    ctest --test-dir build-test-sve -R PolynomialMultiply --output-on-failure
+## Native-only testing
+
+On a system where SVE is not available, a Native-only test build can be configured directly with CMake:
+
+```bash
+cmake -S . -B build-test-native \
+    -DCMAKE_BUILD_TYPE=Release \
+    -DAXHEL_TESTING=ON \
+    -DAXHEL_TEST_FORCE_NATIVE=ON
+```
+
+Build and run the tests with:
+
+```bash
+cmake --build build-test-native --parallel
+ctest --test-dir build-test-native -L regression --output-on-failure
+```
 
 ## Normal AXHEL builds
 
-With `AXHEL_TESTING=OFF` (default), test-only NTT hooks are not compiled and the
-normal AXHEL backend selection remains unchanged.
+Testing is disabled by default:
+
+```text
+AXHEL_TESTING=OFF
+```
+
+When testing is disabled, test-only sources and NTT hooks are not compiled and the normal AXHEL backend selection remains unchanged.
