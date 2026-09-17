@@ -129,6 +129,34 @@ AXHEL supports building from source using the CMake build system. The following 
     The installation includes the AXHEL library, public headers, CMake package configuration files, and exported CMake targets, 
     allowing AXHEL to be easily integrated into external CMake projects using `find_package(AXHEL)`.
 
+## Example
+
+A standalone example demonstrating the main AXHEL operations is provided in the [`example/`](example/) directory.
+
+The example covers element-wise modular arithmetic, modular reduction, and forward/inverse NTT operations, including lazy and normalized transforms.
+
+Navigate to the example directory:
+
+```bash
+cd axhel/example
+```
+
+Configure and build the example:
+
+```bash
+cmake -S . -B build
+cmake --build build
+```
+
+Run the example:
+
+```bash
+./build/example
+```
+
+AXHEL is built automatically as part of the example build and does not need to be installed separately.
+
+
 ## Debugging
 
 For maximum performance, AXHEL performs only minimal runtime validation in `Release` builds. 

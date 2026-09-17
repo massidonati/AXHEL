@@ -260,7 +260,7 @@ void ExampleEltwiseReduceMod() {
 
     {
         std::vector<uint64_t> op{0, 9, 10, 19, 20, 21, 29, 39};
-        std::vector<uint64_t> exp_out{0, 9, 10, 19, 10, 11, 19, 19};
+        std::vector<uint64_t> exp_out{0, 9, 10, 19, 0, 1, 9, 19};
 
         const uint64_t modulus = 10;
         const uint64_t in_mod_factor = 4;

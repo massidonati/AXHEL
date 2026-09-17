@@ -8,14 +8,15 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
-find_package(AXHEL 0.1
-    HINTS ${AXHEL_HINT_DIR}
-    REQUIRED
+# Build AXHEL directly from the repository source tree.
+add_subdirectory(
+    "${CMAKE_CURRENT_LIST_DIR}/.."
+    "${CMAKE_BINARY_DIR}/axhel"
 )
 
 if (NOT TARGET AXHEL::axhel)
     message(FATAL_ERROR "TARGET AXHEL::axhel not found")
 endif()
 
-add_executable(example ../example.cpp)
+add_executable(example example.cpp)
 target_link_libraries(example PRIVATE AXHEL::axhel)
