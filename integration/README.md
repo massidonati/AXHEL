@@ -21,12 +21,12 @@ Each Microsoft SEAL version requires its corresponding integration patch.
 
 | Microsoft SEAL version | AXHEL patch |
 |---|---|
-| [4.4.0](https://github.com/microsoft/SEAL/releases/tag/v4.4.0) | [`axhel-seal-4.4.0.patch`](seal-4.4.0/axhel-seal-4.4.0.patch) |
-| [4.4.1](https://github.com/microsoft/SEAL/releases/tag/v4.4.1) | [`axhel-seal-4.4.1.patch`](seal-4.4.1/axhel-seal-4.4.1.patch) |
-| [4.4.2](https://github.com/microsoft/SEAL/releases/tag/v4.4.2) | [`axhel-seal-4.4.2.patch`](seal-4.4.2/axhel-seal-4.4.2.patch) |
-| [4.4.3](https://github.com/microsoft/SEAL/releases/tag/v4.4.3) | [`axhel-seal-4.4.3.patch`](seal-4.4.3/axhel-seal-4.4.3.patch) |
-| [4.4.4](https://github.com/microsoft/SEAL/releases/tag/v4.4.4) | [`axhel-seal-4.4.4.patch`](seal-4.4.4/axhel-seal-4.4.4.patch) |
-| [4.4.5](https://github.com/microsoft/SEAL/releases/tag/v4.4.5) | [`axhel-seal-4.4.5.patch`](seal-4.4.5/axhel-seal-4.4.5.patch) |
+| [4.4.0](https://github.com/microsoft/SEAL/releases/tag/v4.4.0) | [`SEAL-4.4.0-AXHEL.patch`](seal/SEAL-4.4.0-AXHEL.patch) |
+| [4.4.1](https://github.com/microsoft/SEAL/releases/tag/v4.4.1) | [`SEAL-4.4.1-AXHEL.patch`](seal/SEAL-4.4.1-AXHEL.patch) |
+| [4.4.2](https://github.com/microsoft/SEAL/releases/tag/v4.4.2) | [`SEAL-4.4.2-AXHEL.patch`](seal/SEAL-4.4.2-AXHEL.patch) |
+| [4.4.3](https://github.com/microsoft/SEAL/releases/tag/v4.4.3) | [`SEAL-4.4.3-AXHEL.patch`](seal/SEAL-4.4.3-AXHEL.patch) |
+| [4.4.4](https://github.com/microsoft/SEAL/releases/tag/v4.4.4) | [`SEAL-4.4.4-AXHEL.patch`](seal/SEAL-4.4.4-AXHEL.patch) |
+| [4.4.5](https://github.com/microsoft/SEAL/releases/tag/v4.4.5) | [`SEAL-4.4.5-AXHEL.patch`](seal/SEAL-4.4.5-AXHEL.patch) |
 
 > [!IMPORTANT]
 > Use the patch matching the exact Microsoft SEAL version being built.
