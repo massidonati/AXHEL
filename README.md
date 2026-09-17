@@ -175,6 +175,25 @@ The script builds and tests both the Native and SVE backends using separate Rele
 > The SVE regression requires an SVE-capable target. For the complete regression matrix, configuration options, and advanced usage, see the [tests README](tests/README.md).
 
 
+## Benchmarking
+
+AXHEL includes a public-kernel benchmarking framework for comparing the ScalarStrict, Native, and SVE implementations under equivalent build and execution conditions.
+
+The benchmark measures CPU cycles using the Linux Performance Monitoring Unit (PMU), supports deterministic parameter matrices and CPU affinity, and reports raw measurements, statistical summaries, and backend speedups.
+
+From the AXHEL root folder, run the default benchmark with:
+
+```bash
+chmod +x benchmark/scripts/*.sh benchmark/scripts/*.py
+./benchmark/scripts/run-benchmark.sh
+```
+
+The benchmark automatically builds and evaluates the ScalarStrict, Native, and SVE configurations and stores the results under `benchmark/results/`.
+
+> [!NOTE]
+> The complete three-backend comparison requires an SVE-capable target. For benchmark configuration options, available kernels, measurement methodology, output files, and advanced usage, see the [benchmark README](benchmark/README.md).
+
+
 ## Debugging
 
 For maximum performance, AXHEL performs only minimal runtime validation in `Release` builds. 
