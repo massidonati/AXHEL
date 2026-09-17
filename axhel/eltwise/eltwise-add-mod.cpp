@@ -15,12 +15,14 @@ namespace axhel {
     void EltwiseAddModNative(uint64_t* res, const uint64_t* op1, const uint64_t* op2, uint64_t n, uint64_t mod) {
         
         AXHEL_UNROLL(4)
+        // Scalar element-wise loop.
         for(uint64_t i=0; i<n; ++i){
             const uint64_t op1_val = op1[i];
             const uint64_t op2_val = op2[i];
 
             uint64_t sum = op1_val + op2_val;
 
+            // Conditional modular reduction.
             sum -= static_cast<uint64_t>(sum >= mod) * mod;
 
             res[i] = sum;
@@ -31,11 +33,13 @@ namespace axhel {
     void EltwiseAddModNative(uint64_t* res, const uint64_t* op1, uint64_t op2, uint64_t n, uint64_t mod) {
         
         AXHEL_UNROLL(4)
+        // Scalar element-wise loop.
         for (uint64_t i = 0; i<n; ++i) {
             const uint64_t op1_val = op1[i];
 
             uint64_t sum = op1_val + op2;
 
+            // Conditional modular reduction.
             sum -= static_cast<uint64_t>(sum >= mod) * mod;
 
             res[i] = sum;
@@ -43,6 +47,7 @@ namespace axhel {
     }
 
 
+    // Dispatches vector-vector element-wise modular addition to the available implementation.
     void EltwiseAddMod(uint64_t* res, const uint64_t* op1, const uint64_t* op2, uint64_t n, uint64_t mod) {       
         #ifdef AXHEL_HAS_SVE
         AXHEL_LOG("EltwiseAddMod vector-vector -> SVE");
@@ -54,6 +59,7 @@ namespace axhel {
     }
 
 
+    // Dispatches vector-scalar element-wise modular addition to the available implementation.
     void EltwiseAddMod(uint64_t* res, const uint64_t* op1, const uint64_t op2, uint64_t n, uint64_t mod) {
         #ifdef AXHEL_HAS_SVE
         AXHEL_LOG("EltwiseAddMod vector-scalar -> SVE");

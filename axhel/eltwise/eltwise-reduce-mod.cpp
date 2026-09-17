@@ -15,6 +15,7 @@
 namespace unipi {
 namespace axhel {
 
+    // Performs Barrett reduction of a 64-bit input using precomputed parameters.
     inline uint64_t BarrettReduceUInt64Native(uint64_t op, uint64_t mod, uint64_t barr_factor, uint64_t prod_right_shift) {
         uint64_t c2_hi;
         uint64_t c2_lo;
@@ -30,6 +31,7 @@ namespace axhel {
 
     void EltwiseReduceModNative(uint64_t* res, const uint64_t* op, uint64_t n, uint64_t mod, uint64_t in_mod_factor, uint64_t out_mod_factor) {
 
+        // Input already reduced modulo q.
         if(in_mod_factor == 1) {
             for(uint64_t i=0; i<n; ++i){
                 *res = *op;
@@ -39,6 +41,7 @@ namespace axhel {
             return;
         }
 
+        // Input already satisfies the requested [0, 2q) output range.
         if(out_mod_factor == 2 && in_mod_factor <= 2) {
             for(uint64_t i=0; i<n; ++i){
                 *res = *op;
@@ -48,15 +51,30 @@ namespace axhel {
             return;
         }
 
-        if(in_mod_factor == 2 || in_mod_factor == 4) {
-            const uint64_t target = out_mod_factor * mod;
+        // Reduce from [0, 2q) to [0, q).
+        if(in_mod_factor == 2 && out_mod_factor == 1) {
+            for(uint64_t i=0; i<n; ++i) {
+                *res = ReduceModFactor2To1Native(*op, mod);
 
-            for(uint64_t i=0; i<n; ++i){
+                ++op;
+                ++res;
+            }
+
+            return;
+        }
+
+        // Reduce from [0, 4q) to [0, q).
+        if(in_mod_factor == 4 && out_mod_factor == 1) {
+            const uint64_t twice_mod = 2 * mod;
+
+            for(uint64_t i=0; i<n; ++i) {
                 uint64_t res_val = *op;
 
-                while(res_val >= target) {
-                    res_val -= mod;
-                }
+                // [0, 4q) -> [0, 2q)
+                res_val = ReduceModFactor4To2Native(res_val, twice_mod);
+
+                // [0, 2q) -> [0, q)
+                res_val = ReduceModFactor2To1Native(res_val, mod);
 
                 *res = res_val;
 
@@ -67,6 +85,27 @@ namespace axhel {
             return;
         }
 
+        // Reduce from [0, 4q) to [0, 2q).
+        if(in_mod_factor == 4 && out_mod_factor == 2) {
+            const uint64_t twice_mod = 2 * mod;
+
+            for(uint64_t i=0; i<n; ++i) {
+                uint64_t res_val = *op;
+
+                if(res_val >= twice_mod) {
+                    res_val -= twice_mod;
+                }
+
+                *res = res_val;
+
+                ++op;
+                ++res;
+            }
+
+            return;
+        }  
+
+        // Barrett reduction for the general input range [0, mod^2).
         if(in_mod_factor == mod) {
             constexpr int64_t beta = -2;
             constexpr int64_t alpha = 62;
@@ -89,6 +128,7 @@ namespace axhel {
     }
 
 
+    // Dispatches element-wise modular reduction to the available implementation.
     void EltwiseReduceMod(uint64_t* res, const uint64_t* op, uint64_t n, uint64_t mod, uint64_t in_mod_factor, uint64_t out_mod_factor) {
         #ifdef AXHEL_HAS_SVE
         AXHEL_LOG("EltwiseReduceMod -> SVE" << ", in_factor=" << in_mod_factor << ", out_factor=" << out_mod_factor << ", n=" << n);

@@ -13,12 +13,14 @@ namespace detail {
 
 namespace {
 
+    // Multiplies two scalar values modulo modulus.
     inline uint64_t MultiplyMod(uint64_t operand1, uint64_t operand2, uint64_t modulus) noexcept {
         const uint128_t product = static_cast<uint128_t>(operand1) * static_cast<uint128_t>(operand2);
         return static_cast<uint64_t>(product % modulus);
     }
 
 
+    // Computes base^exponent modulo modulus.
     uint64_t PowMod(uint64_t base, uint64_t exponent, uint64_t modulus) noexcept {
         uint64_t result = 1;
         base %= modulus;
@@ -39,6 +41,7 @@ namespace {
     }
 
 
+    // Creates an NTT operand and its precomputed Shoup quotient.
     inline NTTMultiplyOperand MakeNTTMultiplyOperand(uint64_t operand, uint64_t modulus) noexcept {
         return NTTMultiplyOperand{
             operand,
@@ -47,6 +50,7 @@ namespace {
     }
 
 
+    // Computes the next bit-reversed index.
     inline std::size_t NextBitReversedIndex(std::size_t current, std::size_t degree) noexcept {
         std::size_t bit = degree >> 1;
 
@@ -60,7 +64,7 @@ namespace {
         return current;
     }
 
-
+    // Generates sequential powers of root modulo modulus.
     void GenerateSequentialPowers(std::vector<uint64_t>& powers, uint64_t root, uint64_t modulus) {
         const std::size_t degree = powers.size();
 
@@ -82,27 +86,13 @@ namespace {
         tables.root_powers.resize(degree);
         tables.inv_root_powers.resize(degree);
 
-        /*
-        * Temporary storage reused for forward and inverse powers.
-        *
-        * Only one additional degree-element vector is allocated.
-        */
+        // Temporary storage reused for forward and inverse powers.
         std::vector<uint64_t> sequential_powers(degree);
 
-        /*
-
-        * Generate:
-        *
-        *   1, root, root^2, ..., root^(degree-1)
-        */
+        // Generate sequential forward powers.
         GenerateSequentialPowers(sequential_powers, root_of_unity, modulus);
 
-        /*
-        * Store forward roots in bit-reversed order:
-        *
-        *   root_powers[i] =
-        *       root_of_unity ^ ReverseBits(i)
-        */
+        // Store forward roots in bit-reversed order.
         std::size_t reversed_index = 0;
 
         for (std::size_t i = 0; i < degree; ++i) {
@@ -115,15 +105,15 @@ namespace {
             }
         }
 
+        // Compute the inverse root of unity.
         const uint64_t inv_root_of_unity = PowMod(root_of_unity, modulus - 2, modulus);
 
         GenerateSequentialPowers(sequential_powers, inv_root_of_unity, modulus);
 
-        /*
-        * Index zero is unused by the inverse Harvey kernel.
-        */
+        // Index zero is unused by the inverse Harvey kernel.
         tables.inv_root_powers[0] = NTTMultiplyOperand{0, 0};
 
+        // Store inverse roots in the order required by the inverse transform.
         reversed_index = 0;
 
         for (std::size_t i = 1; i < degree; ++i) {
@@ -138,6 +128,7 @@ namespace {
             }
         }
 
+        // Compute degree^-1 modulo modulus.
         const uint64_t degree_modulo = static_cast<uint64_t>(degree) % modulus;
 
         const uint64_t inv_degree = PowMod(degree_modulo, modulus - 2, modulus);

@@ -16,55 +16,139 @@
 namespace unipi {
 namespace axhel {
 
-    /// @brief SVE specialized internal kernel 
+
+    // Performs SVE element-wise modular multiplication using a compile-time shift.
     template <int ModFactor, uint64_t Shift>
     void EltwiseMulModSVEKernel(uint64_t* res, const uint64_t* op1, const uint64_t* op2, uint64_t n, uint64_t mod, uint64_t barr_factor) {
-        
+        const uint64_t lanes = svcntd();
+        const uint64_t block = 4 * lanes;
+
+        const svbool_t pg_all = svptrue_b64();
         const svuint64_t vmod = svdup_n_u64(mod);
         const svuint64_t v2mod = svdup_n_u64(2 * mod);
         const svuint64_t v4mod = svdup_n_u64(4 * mod);
         const svuint64_t vbarr = svdup_n_u64(barr_factor);
 
-        const uint64_t lanes = svcntd();
+        uint64_t i = 0;
 
-        AXHEL_UNROLL(4)
-        for (uint64_t i = 0; i < n; i += lanes) {
-            svbool_t pg = svwhilelt_b64(i, n);
+        // Main loop: process four independent full-width SVE vectors.
+        for (; n - i >= block; i += block) {
+            svuint64_t x0 = svld1_u64(pg_all, op1 + i);
+            svuint64_t y0 = svld1_u64(pg_all, op2 + i);
+            svuint64_t x1 = svld1_u64(pg_all, op1 + i + lanes);
+            svuint64_t y1 = svld1_u64(pg_all, op2 + i + lanes);
+            svuint64_t x2 = svld1_u64(pg_all, op1 + i + 2 * lanes);
+            svuint64_t y2 = svld1_u64(pg_all, op2 + i + 2 * lanes);
+            svuint64_t x3 = svld1_u64(pg_all, op1 + i + 3 * lanes);
+            svuint64_t y3 = svld1_u64(pg_all, op2 + i + 3 * lanes);
+
+            // Reduce inputs to [0, q).
+            if constexpr (ModFactor != 1) {
+                x0 = ReduceInputSVE<ModFactor>(pg_all, x0, vmod, v2mod, v4mod);
+                y0 = ReduceInputSVE<ModFactor>(pg_all, y0, vmod, v2mod, v4mod);
+
+                x1 = ReduceInputSVE<ModFactor>(pg_all, x1, vmod, v2mod, v4mod);
+                y1 = ReduceInputSVE<ModFactor>(pg_all, y1, vmod, v2mod, v4mod);
+
+                x2 = ReduceInputSVE<ModFactor>(pg_all, x2, vmod, v2mod, v4mod);
+                y2 = ReduceInputSVE<ModFactor>(pg_all, y2, vmod, v2mod, v4mod);
+
+                x3 = ReduceInputSVE<ModFactor>(pg_all, x3, vmod, v2mod, v4mod);
+                y3 = ReduceInputSVE<ModFactor>(pg_all, y3, vmod, v2mod, v4mod);
+            }
+
+            // Full 64x64 -> 128-bit products.
+            svuint64_t prod_hi0;
+            svuint64_t prod_lo0;
+
+            svuint64_t prod_hi1;
+            svuint64_t prod_lo1;
+
+            svuint64_t prod_hi2;
+            svuint64_t prod_lo2;
+
+            svuint64_t prod_hi3;
+            svuint64_t prod_lo3;
+
+            MulU64ToU128SVE(pg_all, x0, y0, &prod_hi0, &prod_lo0);
+            MulU64ToU128SVE(pg_all, x1, y1, &prod_hi1, &prod_lo1);
+            MulU64ToU128SVE(pg_all, x2, y2, &prod_hi2, &prod_lo2);
+            MulU64ToU128SVE(pg_all, x3, y3, &prod_hi3, &prod_lo3);
+
+            // Extract the low 64 bits of the shifted 128-bit products.
+            const svuint64_t c0 = ShiftRight128LowPart<Shift>(pg_all, prod_hi0, prod_lo0);
+            const svuint64_t c1 = ShiftRight128LowPart<Shift>(pg_all, prod_hi1, prod_lo1);
+            const svuint64_t c2 = ShiftRight128LowPart<Shift>(pg_all, prod_hi2, prod_lo2);
+            const svuint64_t c3 = ShiftRight128LowPart<Shift>(pg_all, prod_hi3, prod_lo3);
+
+            // Barrett quotient approximations.
+            const svuint64_t q_hat0 = svmulh_u64_x(pg_all, c0, vbarr);
+            const svuint64_t q_hat1 = svmulh_u64_x(pg_all, c1, vbarr);
+            const svuint64_t q_hat2 = svmulh_u64_x(pg_all, c2, vbarr);
+            const svuint64_t q_hat3 = svmulh_u64_x(pg_all, c3, vbarr);
+
+            // Barrett residuals: z = prod_lo - q_hat * mod.
+            const svuint64_t q_mul0 = svmul_u64_x(pg_all, q_hat0, vmod);
+            const svuint64_t q_mul1 = svmul_u64_x(pg_all, q_hat1, vmod);
+            const svuint64_t q_mul2 = svmul_u64_x(pg_all, q_hat2, vmod);
+            const svuint64_t q_mul3 = svmul_u64_x(pg_all, q_hat3, vmod);
+
+            svuint64_t z0 = svsub_u64_x(pg_all, prod_lo0, q_mul0);
+            svuint64_t z1 = svsub_u64_x(pg_all, prod_lo1, q_mul1);
+            svuint64_t z2 = svsub_u64_x(pg_all, prod_lo2, q_mul2);
+            svuint64_t z3 = svsub_u64_x(pg_all, prod_lo3, q_mul3);
+
+            // Final correction: [0, 4q) -> [0, q).
+            z0 = ReduceInputSVE<4>(pg_all, z0, vmod, v2mod, v4mod);
+            z1 = ReduceInputSVE<4>(pg_all, z1, vmod, v2mod, v4mod);
+            z2 = ReduceInputSVE<4>(pg_all, z2, vmod, v2mod, v4mod);
+            z3 = ReduceInputSVE<4>(pg_all, z3, vmod, v2mod, v4mod);
+
+            svst1_u64(pg_all, res + i, z0);
+            svst1_u64(pg_all, res + i + lanes, z1);
+            svst1_u64(pg_all, res + i + 2 * lanes, z2);
+            svst1_u64(pg_all, res + i + 3 * lanes, z3);
+        }
+
+        // Handle the remaining elements with predication.
+        while (i < n) {
+            const svbool_t pg = svwhilelt_b64(i, n);
 
             svuint64_t x = svld1_u64(pg, op1 + i);
             svuint64_t y = svld1_u64(pg, op2 + i);
 
-            // normalize lazy inputs only when required by ModFactor
+             // Reduce inputs to [0, q).
             if constexpr (ModFactor != 1) {
                 x = ReduceInputSVE<ModFactor>(pg, x, vmod, v2mod, v4mod);
                 y = ReduceInputSVE<ModFactor>(pg, y, vmod, v2mod, v4mod);
             }
 
-            // SVE 64x64 -> 128 multiplication.
+            // Full 64x64 -> 128-bit product.
             svuint64_t prod_hi;
             svuint64_t prod_lo;
+
             MulU64ToU128SVE(pg, x, y, &prod_hi, &prod_lo);
 
-            // Barrett: c1 = floor(product / 2^Shift)
-            svuint64_t c1 = ShiftRight128LowPart<Shift>(pg, prod_hi, prod_lo);
+            const svuint64_t c = ShiftRight128LowPart<Shift>(pg, prod_hi, prod_lo);
 
-            // q_hat = high64(c1 * barr_factor)
-            svuint64_t q_hat = svmulh_u64_x(pg, c1, vbarr); 
+             // Barrett quotient approximation.
+            const svuint64_t q_hat = svmulh_u64_x(pg, c, vbarr);
 
-            // z = low64(product) - q_hat * modulus
-            svuint64_t q_mul = svmul_u64_x(pg, q_hat, vmod);
+            // Barrett residual: z = prod_lo - q_hat * mod.
+            const svuint64_t q_mul = svmul_u64_x(pg, q_hat, vmod);
             svuint64_t z = svsub_u64_x(pg, prod_lo, q_mul);
 
-            // final correction to [0, q)
+            // Final correction: [0, 4q) -> [0, q).
             z = ReduceInputSVE<4>(pg, z, vmod, v2mod, v4mod);
 
             svst1_u64(pg, res + i, z);
+
+            i += lanes;
         }
     }
 
 
-
-    /// @brief out-of-loop dispatchdispatcher to select template version with Shift known at compile-time 
+    // Dispatches SVE modular multiplication to the kernel matching the runtime shift value.
     template <int ModFactor>
     void DispatchEltwiseMulModSVEKernel(uint64_t* res, const uint64_t* op1, const uint64_t* op2, uint64_t n, uint64_t mod, uint64_t barr_factor, uint64_t prod_right_shift) {
     #define AXHEL_DISPATCH_SHIFT(SHIFT_VALUE)                                      \
@@ -139,7 +223,8 @@ namespace axhel {
     #undef AXHEL_DISPATCH_SHIFT
     }
 
-    // @brief SVE-optimized multiply
+
+    // Performs SVE element-wise modular multiplication.
     template <int ModFactor>
     void EltwiseMulModSVE(uint64_t* res, const uint64_t* op1, const uint64_t* op2, uint64_t n, uint64_t mod){
 
@@ -154,15 +239,14 @@ namespace axhel {
         // Barrett factor mu
         const uint64_t barr_factor = MultiplyFactor(uint64_t(1) << (ceil_log_mod + alpha - 64), 64, mod).BarrettFactor();
 
-        // specialized dispatch 
+       // Dispatch to the kernel matching the runtime shift value.
         DispatchEltwiseMulModSVEKernel<ModFactor>(res, op1, op2, n, mod, barr_factor, prod_right_shift);
     }
 
 
+    // Explicit template instantiations for the supported modulus factors.
     template void EltwiseMulModSVE<1>(uint64_t*, const uint64_t*, const uint64_t*, uint64_t, uint64_t);
-
     template void EltwiseMulModSVE<2>(uint64_t*, const uint64_t*, const uint64_t*, uint64_t, uint64_t);
-
     template void EltwiseMulModSVE<4>(uint64_t*, const uint64_t*, const uint64_t*, uint64_t, uint64_t);
 
 }

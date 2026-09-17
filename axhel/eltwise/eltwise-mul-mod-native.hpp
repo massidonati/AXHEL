@@ -9,7 +9,8 @@
 namespace unipi {
 namespace axhel {
 
-    /// @brief Multiply two vectors elementwise with modular reduction
+    /// @brief Multiplies two vectors elementwise with modular reduction.
+    /// @pre Each element of op1 and op2 must be in the range [0, ModFactor * mod).
     template <int ModFactor>
     void EltwiseMulModNative(uint64_t* res, const uint64_t* op1, const uint64_t* op2, uint64_t n, uint64_t mod);
 

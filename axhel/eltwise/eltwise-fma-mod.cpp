@@ -14,6 +14,7 @@
 namespace unipi {
 namespace axhel {
 
+    // Performs element-wise modular multiply-add.
     template <int ModFactor>
     void EltwiseFMAModNative(uint64_t* res, const uint64_t* op1, uint64_t op2, const uint64_t* op3, uint64_t n, uint64_t mod) {
 
@@ -28,23 +29,24 @@ namespace axhel {
         // Barrett factor mu
         const uint64_t barr_factor = MultiplyFactor(uint64_t(1) << (ceil_log_mod + alpha - 64), 64, mod).BarrettFactor();
 
-        // modular reduction of input
+         // Reduce scalar input to [0, q).
         const uint64_t op2_red = ReduceInputNative<ModFactor>(op2, mod);
 
         AXHEL_UNROLL(4)
+        // Scalar loop.
         for(uint64_t i=0; i<n; ++i) {
             uint64_t prod_hi;
             uint64_t prod_lo;
             uint64_t c2_hi;
             uint64_t c2_lo;
 
-            // modular reduction of input
+            // Reduce input to [0, q).
             const uint64_t x = ReduceInputNative<ModFactor>(op1[i], mod);
 
-            // full 64x64 -> 128 product
+            // Full 64x64 -> 128 product.
             MultiplyUInt64(x, op2_red, &prod_hi, &prod_lo);
 
-             // c1 = floor((prod_hi:prod_lo) / 2^(n + beta))
+            // c1 = floor((prod_hi:prod_lo) / 2^(n + beta))
             const uint64_t c1 = (prod_lo >> prod_right_shift) | (prod_hi << (64 - prod_right_shift));
 
             // c2 = floor(U / 2^{n + beta}) * mu
@@ -53,18 +55,19 @@ namespace axhel {
             // q_hat = high64(c1 * barr_factor)
             const uint64_t q_hat = c2_hi;
 
-            // only the low 64 bits are required here
+            // Barrett residual.
             const uint64_t z = prod_lo - q_hat * mod;
 
-            // final correction to [0, q)
+            // Final correction: [0, 4q) -> [0, q).
             uint64_t res_val = ReduceInputNative<4>(z, mod);
 
-            // conditional addition
+            // Add op3 when provided.
             if(op3 != nullptr) {
                 uint64_t add_val = ReduceInputNative<ModFactor>(op3[i], mod);
 
                 res_val += add_val;
 
+                // Conditional modular reduction.
                 if(res_val >= mod) {
                     res_val -= mod;
                 }
@@ -75,6 +78,7 @@ namespace axhel {
     }
 
 
+    // Dispatches element-wise modular multiply-add to the available implementation.
     template <int ModFactor>
     inline void EltwiseFMAModDispatch(uint64_t* res, const uint64_t* op1, uint64_t op2, const uint64_t* op3, uint64_t n, uint64_t mod) {
         #ifdef AXHEL_HAS_SVE
@@ -87,6 +91,8 @@ namespace axhel {
     }
 
 
+    // Dispatches element-wise modular multiply-add according to the input modulus factor.
+    // mod_factor must be 1, 2, 4, or 8.
     void EltwiseFMAMod(uint64_t* res, const uint64_t* op1, uint64_t op2, const uint64_t* op3, uint64_t n, uint64_t mod, uint64_t mod_factor) {
         
         switch(mod_factor) {
@@ -105,13 +111,10 @@ namespace axhel {
         }
     }
 
-
+    // Explicit template instantiations for the supported modulus factors.
     template void EltwiseFMAModNative<1>(uint64_t*, const uint64_t*, uint64_t, const uint64_t*, uint64_t, uint64_t);
-    
     template void EltwiseFMAModNative<2>(uint64_t*, const uint64_t*, uint64_t, const uint64_t*, uint64_t, uint64_t);
-    
     template void EltwiseFMAModNative<4>(uint64_t*, const uint64_t*, uint64_t, const uint64_t*, uint64_t, uint64_t);
-
     template void EltwiseFMAModNative<8>(uint64_t*, const uint64_t*, uint64_t, const uint64_t*, uint64_t, uint64_t);
     
 }

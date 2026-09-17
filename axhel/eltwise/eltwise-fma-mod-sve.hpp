@@ -8,6 +8,8 @@
 namespace unipi {
 namespace axhel {
 
+    /// @brief Performs element-wise fused multiply-add with modular reduction using SVE.
+    /// @pre Each element of op1 and op3, and the scalar op2, must be in the range [0, ModFactor * mod).
     template <int ModFactor>
     void EltwiseFMAModSVE(uint64_t* res, const uint64_t* op1, uint64_t op2, const uint64_t* op3, uint64_t n, uint64_t mod);    
 

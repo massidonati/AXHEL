@@ -46,6 +46,12 @@ endif()
 
 add_library(AXHEL::axhel ALIAS axhel)
 
+# Test-only hooks are compiled into the library only for AXHEL test builds.
+# PRIVATE keeps AXHEL_TESTING out of the installed/public target interface.
+if(AXHEL_TESTING)
+    target_compile_definitions(axhel PRIVATE AXHEL_TESTING=1)
+endif()
+
 axhel_add_asan_flag(axhel)
 
 # GCC 11 may trigger an internal compiler error when AddressSanitizer
@@ -132,6 +138,31 @@ if (CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
             -Wno-unknown-warning
             -Wno-unknown-warning-option
     )
+    # Third benchmark baseline: preserve the normal Release optimization level
+    # and CPU tuning, but explicitly disable both forms of compiler
+    # auto-vectorization on the AXHEL library itself. This is intentionally
+    # separate from AXHEL_BENCHMARK_FORCE_NATIVE.
+    if (AXHEL_BENCHMARK_FORCE_SCALAR)
+        if (CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+            target_compile_options(
+                axhel
+                PRIVATE
+                    -fno-tree-vectorize
+                    -fno-tree-loop-vectorize
+                    -fno-tree-slp-vectorize
+            )
+            message(STATUS "AXHEL strict-scalar benchmark: GCC loop/SLP vectorization disabled")
+        elseif (CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+            target_compile_options(
+                axhel
+                PRIVATE
+                    -fno-vectorize
+                    -fno-slp-vectorize
+            )
+            message(STATUS "AXHEL strict-scalar benchmark: Clang loop/SLP vectorization disabled")
+        endif()
+    endif()
+
     if (AXHEL_OPT_REPORT)
          target_compile_options(
             axhel

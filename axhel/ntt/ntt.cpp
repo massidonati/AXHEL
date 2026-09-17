@@ -28,20 +28,11 @@ namespace axhel {
         std::size_t coeff_count_power{0};
         uint64_t modulus{0};
 
-        /*
-        * Storage used by the standalone constructor.
-        *
-        * These vectors remain empty when externally owned tables are used.
-        */
+        // Storage used when NTT tables are generated internally.
         std::vector<NTTMultiplyOperand> owned_root_powers;
         std::vector<NTTMultiplyOperand> owned_inv_root_powers;
 
-        /*
-        * Active tables used by the transform kernels.
-        *
-        * They point either to the owned vectors above or to externally
-        * supplied tables.
-        */
+        // Active forward and inverse root tables.
         const NTTMultiplyOperand *root_powers{nullptr};
         const NTTMultiplyOperand *inv_root_powers{nullptr};
 
@@ -50,6 +41,7 @@ namespace axhel {
 
     namespace {
 
+        // Computes log2(degree) for a power-of-two polynomial degree.
         size_t ComputeCoeffCountPower(uint64_t degree) {
             size_t result = 0;
             while (degree > 1) {
@@ -59,9 +51,8 @@ namespace axhel {
             return result;
         }
 
-        /*
-        * Internal forward-lazy dispatcher.
-        */
+
+        // Dispatches the forward lazy NTT to the available implementation.
         void NTTNegacyclicHarveyLazy(uint64_t *operand, size_t coeff_count_power, uint64_t modulus, const NTTMultiplyOperand *root_powers) {
             #ifdef AXHEL_HAS_SVE
             AXHEL_LOG("NTTNegacyclicHarveyLazy -> SVE" << ", degree=" << (size_t{1} << coeff_count_power));
@@ -72,26 +63,34 @@ namespace axhel {
             #endif
         }
 
-        /*
-        * Internal normalized forward NTT.
-        */
+/*
+        // Computes the normalized forward NTT.
         void NTTNegacyclicHarvey(uint64_t *operand, size_t coeff_count_power, uint64_t modulus, const NTTMultiplyOperand *root_powers) {
             NTTNegacyclicHarveyLazy(operand, coeff_count_power, modulus, root_powers);
 
             const size_t coeff_count = size_t{ 1 } << coeff_count_power;
 
-            /*
-            * Forward lazy output:
-            *
-            *   [0, 4q) -> [0, q)
-            */
+            // Forward lazy output: [0, 4q) -> [0, q).
             EltwiseReduceMod(operand, operand, static_cast<uint64_t>(coeff_count), modulus, 4, 1);
         }
+*/
 
-        /*
-        * Internal inverse-lazy dispatcher.
-        *
-        */
+        // Computes the normalized forward NTT.
+        void NTTNegacyclicHarvey(uint64_t *operand, size_t coeff_count_power, uint64_t modulus, const NTTMultiplyOperand *root_powers) {
+            #ifdef AXHEL_HAS_SVE
+            AXHEL_LOG("NTTNegacyclicHarvey -> SVE fused normalization" << ", degree=" << (size_t{ 1 } << coeff_count_power));
+            NTTNegacyclicHarveySVE(operand, coeff_count_power, modulus, root_powers);
+            #else
+            NTTNegacyclicHarveyLazy(operand, coeff_count_power, modulus, root_powers);
+
+            const size_t coeff_count = size_t{ 1 } << coeff_count_power;
+
+            // Forward lazy output: [0, 4q) -> [0, q).
+            EltwiseReduceMod(operand, operand, static_cast<uint64_t>(coeff_count), modulus, 4, 1);
+            #endif
+        }
+
+        // Dispatches the inverse lazy NTT to the available implementation.
         void InverseNTTNegacyclicHarveyLazy(uint64_t *operand, size_t coeff_count_power, uint64_t modulus, const NTTMultiplyOperand *inv_root_powers, NTTMultiplyOperand inv_degree_modulo) {
             #ifdef AXHEL_HAS_SVE
             AXHEL_LOG("InverseNTTNegacyclicHarveyLazy -> SVE" << ", degree=" << (size_t{1} << coeff_count_power));
@@ -102,20 +101,20 @@ namespace axhel {
             #endif
         }
 
-        /*
-        * Internal normalized inverse NTT.
-        */
+
+        // Computes the normalized inverse NTT.
         void InverseNTTNegacyclicHarvey(uint64_t *operand, size_t coeff_count_power, uint64_t modulus, const NTTMultiplyOperand *inv_root_powers, NTTMultiplyOperand inv_degree_modulo) {
+            #ifdef AXHEL_HAS_SVE
+            AXHEL_LOG("InverseNTTNegacyclicHarvey -> SVE fused normalization" << ", degree=" << (size_t{1} << coeff_count_power));
+            InverseNTTNegacyclicHarveySVE(operand, coeff_count_power, modulus, inv_root_powers, inv_degree_modulo);
+            #else
             InverseNTTNegacyclicHarveyLazy(operand, coeff_count_power, modulus, inv_root_powers, inv_degree_modulo);
 
             const size_t coeff_count = size_t{ 1 } << coeff_count_power;
 
-            /*
-            * Inverse lazy output:
-            *
-            *   [0, 2q) -> [0, q)
-            */
+            // Inverse lazy output: [0, 2q) -> [0, q).
             EltwiseReduceMod(operand, operand, static_cast<uint64_t>(coeff_count), modulus, 2, 1);
+            #endif
         }
     
     } // namespace anonymous 
@@ -145,10 +144,7 @@ namespace axhel {
         impl_->owned_inv_root_powers = std::move(tables.inv_root_powers);
         impl_->inv_degree_modulo = tables.inv_degree_modulo;
 
-        /*
-        * Set active pointers only after the vectors have received their
-        * final storage.
-        */
+        // Set active pointers after the owned tables have acquired their final storage.
         impl_->root_powers = impl_->owned_root_powers.data();
         impl_->inv_root_powers = impl_->owned_inv_root_powers.data();
 
@@ -170,8 +166,13 @@ namespace axhel {
 
     NTT &NTT::operator=(NTT &&) noexcept = default;
 
+
     /// @brief Computes the forward negacyclic Harvey NTT.
+    /// input_mod_factor: input coefficient bounding factor.
+    /// output_mod_factor: output coefficient bounding factor; supported values are 1 and 4.
     void NTT::ComputeForward(uint64_t *result, const uint64_t *operand, uint64_t input_mod_factor, uint64_t output_mod_factor) const {
+        
+        // Copy input when operating out of place.
         if (result != operand) {
          std::copy_n(operand, static_cast<std::size_t>(impl_->degree), result);
         }
@@ -186,7 +187,11 @@ namespace axhel {
 
 
     /// @brief Computes the inverse negacyclic Harvey NTT.
+    /// input_mod_factor: input coefficient bounding factor.
+    /// output_mod_factor: output coefficient bounding factor; supported values are 1 and 2.
     void NTT::ComputeInverse(uint64_t *result, const uint64_t *operand, uint64_t input_mod_factor, uint64_t output_mod_factor) const {
+        
+        // Copy input when operating out of place.
         if (result != operand) {
             std::copy_n(operand, static_cast<std::size_t>(impl_->degree), result);
         }

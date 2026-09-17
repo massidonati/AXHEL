@@ -14,11 +14,11 @@
 namespace unipi {
 namespace axhel {
 
-
+    // Multiplies two vectors elementwise with modular reduction.
     template <int ModFactor>
     void EltwiseMulModNative(uint64_t* res, const uint64_t* op1, const uint64_t* op2, uint64_t n, uint64_t mod) {
 
-        // Barrett params
+        // Barrett params.
         constexpr int64_t beta = -2;
         constexpr int64_t alpha = 62; // alpha - beta = 64
 
@@ -26,21 +26,22 @@ namespace axhel {
        
         const uint64_t prod_right_shift = static_cast<uint64_t>(static_cast<int64_t>(ceil_log_mod) + beta);
 
-        // Barrett factor mu
+        // Barrett factor mu.
         const uint64_t barr_factor = MultiplyFactor(uint64_t(1) << (ceil_log_mod + alpha - 64), 64, mod).BarrettFactor();
 
         AXHEL_UNROLL(4)
+        // Scalar loop.
         for (uint64_t i = 0; i < n; ++i) {
             uint64_t prod_hi;
             uint64_t prod_lo;
             uint64_t c2_hi;
             uint64_t c2_lo;
 
-            // modular reduction of inputs
+            // Reduce inputs to [0, q).
             const uint64_t x = ReduceInputNative<ModFactor>(op1[i], mod);
             const uint64_t y = ReduceInputNative<ModFactor>(op2[i], mod);
 
-            // full 64x64 -> 128 product
+            // Full 64x64 -> 128 product
             MultiplyUInt64(x, y, &prod_hi, &prod_lo);
 
             // c1 = floor((prod_hi:prod_lo) / 2^(n + beta))
@@ -52,16 +53,17 @@ namespace axhel {
             // q_hat = high64(c1 * barr_factor)
             const uint64_t q_hat = c2_hi;
 
-            // only the low 64 bits are required here
+            // Barrett residual.
             const uint64_t z = prod_lo - q_hat * mod;
 
-            // final correction to [0, q)
+            // Final correction: [0, 4q) -> [0, q).
             res[i] = ReduceInputNative<4>(z, mod);
 
         }
     }
 
     
+    // Dispatches element-wise modular multiplication to the available implementation.
     template <int ModFactor>
     inline void EltwiseMulModDispatch(uint64_t* res, const uint64_t* op1, const uint64_t* op2, uint64_t n, uint64_t mod) {
         #ifdef AXHEL_HAS_SVE
@@ -74,9 +76,9 @@ namespace axhel {
     }
 
 
+    // Dispatches element-wise modular multiplication according to the input modulus factor. 
+    // mod_factor must be 1, 2, or 4.
     void EltwiseMulMod(uint64_t* res, const uint64_t* op1, const uint64_t* op2, uint64_t n, uint64_t mod, uint64_t mod_factor) {
-        
-        //TODO: check
 
         switch (mod_factor) {
             case 1:
@@ -91,10 +93,9 @@ namespace axhel {
         }
     }
 
+    // Explicit template instantiations for the supported modulus factors.
     template void EltwiseMulModNative<1>(uint64_t*, const uint64_t*, const uint64_t*, uint64_t, uint64_t);
-
     template void EltwiseMulModNative<2>( uint64_t*, const uint64_t*, const uint64_t*, uint64_t, uint64_t);
-
     template void EltwiseMulModNative<4>( uint64_t*, const uint64_t*, const uint64_t*, uint64_t, uint64_t);
 
 }
