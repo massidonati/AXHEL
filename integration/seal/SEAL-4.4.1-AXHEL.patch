@@ -1,0 +1,386 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index 46b80241d117e009b326d7cf05581c0af6b25342..16a09a4acd0d32e9c64e677e339ad1d98fc52b72 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -276,6 +276,22 @@ if(SEAL_USE_INTEL_HEXL)
+     endif()
+ endif()
+ 
++# [option] SEAL_USE_AXHEL (default: OFF)
++set(SEAL_USE_AXHEL_OPTION_STR "Use AXHEL library")
++option(SEAL_USE_AXHEL ${SEAL_USE_AXHEL_OPTION_STR} OFF)
++message(STATUS "SEAL_USE_AXHEL: ${SEAL_USE_AXHEL}")
++
++if(SEAL_USE_AXHEL AND SEAL_USE_INTEL_HEXL)
++    message(FATAL_ERROR "SEAL_USE_AXHEL and SEAL_USE_INTEL_HEXL cannot both be enabled")
++endif()
++
++if(SEAL_USE_AXHEL)
++    find_package(AXHEL CONFIG REQUIRED)
++    if(NOT TARGET AXHEL::axhel)
++        message(FATAL_ERROR "AXHEL: target AXHEL::axhel not found")
++    endif()
++endif()
++
+ ####################
+ # SEAL C++ library #
+ ####################
+@@ -412,6 +428,10 @@ if(NOT BUILD_SHARED_LIBS)
+         endif()
+     endif()
+ 
++    if(SEAL_USE_AXHEL)
++        target_link_libraries(seal PUBLIC AXHEL::axhel)
++    endif()
++
+     # Set secure compile options if SEAL_SECURE_COMPILE_OPTIONS is ON.
+     if(SEAL_SECURE_COMPILE_OPTIONS)
+         seal_set_secure_compile_options(seal PUBLIC)
+@@ -465,6 +485,10 @@ else()
+             DESTINATION ${CMAKE_INSTALL_PREFIX}/${CMAKE_LIBRARY_PREFIX}
+             FILES_MATCHING PATTERN "*hexl*")
+     endif()
++
++    if(SEAL_USE_AXHEL)
++        target_link_libraries(seal_shared PRIVATE AXHEL::axhel)
++    endif()
+ endif()
+ 
+ # Add standard alias targets for SEAL::seal and SEAL::seal_shared
+diff --git a/cmake/SEALConfig.cmake.in b/cmake/SEALConfig.cmake.in
+index a146e37c7c41de6ab0d53214769d15ee33f60a24..55abd0b516ca62519e72dded26c5a696dc0f6a3c 100644
+--- a/cmake/SEALConfig.cmake.in
++++ b/cmake/SEALConfig.cmake.in
+@@ -35,6 +35,7 @@
+ #   SEAL_USE_ZLIB : Set to non-zero value if library is compiled with ZLIB support
+ #   SEAL_USE_ZSTD : Set to non-zero value if library is compiled with Zstandard support
+ #   SEAL_USE_INTEL_HEXL: Set to non-zero value if library is compiled with Intel HEXL support
++#   SEAL_USE_AXHEL: Set to non-zero value if library is compiled with AXHEL support
+ #   SEAL_CARRY_DEPS : Set to non-zero value if library is configured with SEAL_BUILD_DEPS=ON and carries dependencies
+ 
+ @PACKAGE_INIT@
+@@ -86,6 +87,7 @@ set(SEAL_USE_MSGSL @SEAL_USE_MSGSL@)
+ set(SEAL_USE_ZLIB @SEAL_USE_ZLIB@)
+ set(SEAL_USE_ZSTD @SEAL_USE_ZSTD@)
+ set(SEAL_USE_INTEL_HEXL @SEAL_USE_INTEL_HEXL@)
++set(SEAL_USE_AXHEL @SEAL_USE_AXHEL@)
+ set(SEAL_CARRY_DEPS @SEAL_BUILD_DEPS@)
+ 
+ # If SEAL does not carry dependencies, we must look for them
+@@ -114,6 +116,11 @@ if(NOT SEAL_CARRY_DEPS)
+     endif()
+ endif()
+ 
++# AXHEL is always an external dependency and is never carried by SEAL.
++if(SEAL_USE_AXHEL)
++    seal_find_dependency(AXHEL)
++endif()
++
+ # Add the current directory to the module search path
+ list(APPEND CMAKE_MODULE_PATH ${CMAKE_CURRENT_LIST_DIR})
+ 
+diff --git a/native/src/seal/util/config.h.in b/native/src/seal/util/config.h.in
+index 62a3497b67e8ef445361659108fe02802076cc06..6eb6fe5e7f11125ef39e7aea165e54154f6195f9 100644
+--- a/native/src/seal/util/config.h.in
++++ b/native/src/seal/util/config.h.in
+@@ -50,3 +50,4 @@
+ #cmakedefine SEAL_USE_ZLIB
+ #cmakedefine SEAL_USE_ZSTD
+ #cmakedefine SEAL_USE_INTEL_HEXL
++#cmakedefine SEAL_USE_AXHEL
+diff --git a/native/src/seal/util/ntt.cpp b/native/src/seal/util/ntt.cpp
+index 68694a6cd678d1dd05ef2e63170321b02deef52d..e213b217ed99ce067761bbac4d76f525144ac9d7 100644
+--- a/native/src/seal/util/ntt.cpp
++++ b/native/src/seal/util/ntt.cpp
+@@ -5,6 +5,10 @@
+ #include "seal/util/uintarith.h"
+ #include "seal/util/uintarithsmallmod.h"
+ #include <algorithm>
++#ifdef SEAL_USE_AXHEL
++#include <mutex>
++#include <unordered_map>
++#endif
+ #ifdef SEAL_USE_INTEL_HEXL
+ #include "seal/memorymanager.h"
+ #include "seal/util/iterator.h"
+@@ -226,6 +230,66 @@ namespace seal
+ {
+     namespace util
+     {
++#ifdef SEAL_USE_AXHEL
++        namespace
++        {
++            struct AXHELNTTCacheKey
++            {
++                std::uint64_t degree;
++                std::uint64_t modulus;
++                std::uint64_t root;
++
++                bool operator==(const AXHELNTTCacheKey &other) const noexcept
++                {
++                    return degree == other.degree && modulus == other.modulus && root == other.root;
++                }
++            };
++
++            struct AXHELNTTCacheKeyHash
++            {
++                std::size_t operator()(const AXHELNTTCacheKey &key) const noexcept
++                {
++                    std::size_t seed = std::hash<std::uint64_t>{}(key.degree);
++                    seed ^= std::hash<std::uint64_t>{}(key.modulus) + 0x9e3779b9U + (seed << 6) + (seed >> 2);
++                    seed ^= std::hash<std::uint64_t>{}(key.root) + 0x9e3779b9U + (seed << 6) + (seed >> 2);
++                    return seed;
++                }
++            };
++
++            using AXHELNTTCache = std::unordered_map<
++                AXHELNTTCacheKey, std::shared_ptr<const unipi::axhel::NTT>, AXHELNTTCacheKeyHash>;
++
++            std::shared_ptr<const unipi::axhel::NTT> get_cached_axhel_ntt(
++                std::uint64_t degree, std::uint64_t modulus, std::uint64_t root)
++            {
++                static AXHELNTTCache cache;
++                static std::mutex cache_mutex;
++
++                const AXHELNTTCacheKey key{ degree, modulus, root };
++                std::lock_guard<std::mutex> lock(cache_mutex);
++
++                auto cached = cache.find(key);
++                if (cached != cache.end())
++                {
++                    return cached->second;
++                }
++
++                auto ntt = std::make_shared<const unipi::axhel::NTT>(degree, modulus, root);
++                cache.emplace(key, ntt);
++                return ntt;
++            }
++        } // namespace
++
++        void NTTTables::initialize_axhel_ntt()
++        {
++            // AXHEL regenerates the tables only once for each distinct
++            // (degree, modulus, primitive root) tuple. All NTTTables copies and
++            // all SEALContext instances in the process share the cached object.
++            axhel_ntt_ = get_cached_axhel_ntt(
++                static_cast<std::uint64_t>(coeff_count_), modulus_.value(), root_);
++        }
++#endif
++
+         NTTTables::NTTTables(int coeff_count_power, const Modulus &modulus, MemoryPoolHandle pool)
+             : pool_(std::move(pool))
+         {
+@@ -297,6 +361,9 @@ namespace seal
+ 
+             mod_arith_lazy_ = ModArithLazy(modulus_);
+             ntt_handler_ = NTTHandler(mod_arith_lazy_);
++#ifdef SEAL_USE_AXHEL
++            initialize_axhel_ntt();
++#endif
+         }
+ 
+         class NTTTablesCreateIter
+@@ -393,7 +460,9 @@ namespace seal
+ 
+         void ntt_negacyclic_harvey_lazy(CoeffIter operand, const NTTTables &tables)
+         {
+-#ifdef SEAL_USE_INTEL_HEXL
++#ifdef SEAL_USE_AXHEL
++            tables.axhel_ntt().ComputeForward(operand.ptr(), operand.ptr(), 4, 4);
++#elif defined(SEAL_USE_INTEL_HEXL)
+             size_t N = size_t(1) << tables.coeff_count_power();
+             uint64_t p = tables.modulus().value();
+             uint64_t root = tables.get_root();
+@@ -407,7 +476,9 @@ namespace seal
+ 
+         void ntt_negacyclic_harvey(CoeffIter operand, const NTTTables &tables)
+         {
+-#ifdef SEAL_USE_INTEL_HEXL
++#ifdef SEAL_USE_AXHEL
++            tables.axhel_ntt().ComputeForward(operand.ptr(), operand.ptr(), 4, 1);
++#elif defined(SEAL_USE_INTEL_HEXL)
+             size_t N = size_t(1) << tables.coeff_count_power();
+             uint64_t p = tables.modulus().value();
+             uint64_t root = tables.get_root();
+@@ -438,7 +509,9 @@ namespace seal
+ 
+         void inverse_ntt_negacyclic_harvey_lazy(CoeffIter operand, const NTTTables &tables)
+         {
+-#ifdef SEAL_USE_INTEL_HEXL
++#ifdef SEAL_USE_AXHEL
++            tables.axhel_ntt().ComputeInverse(operand.ptr(), operand.ptr(), 2, 2);
++#elif defined(SEAL_USE_INTEL_HEXL)
+             size_t N = size_t(1) << tables.coeff_count_power();
+             uint64_t p = tables.modulus().value();
+             uint64_t root = tables.get_root();
+@@ -452,7 +525,9 @@ namespace seal
+ 
+         void inverse_ntt_negacyclic_harvey(CoeffIter operand, const NTTTables &tables)
+         {
+-#ifdef SEAL_USE_INTEL_HEXL
++#ifdef SEAL_USE_AXHEL
++            tables.axhel_ntt().ComputeInverse(operand.ptr(), operand.ptr(), 2, 1);
++#elif defined(SEAL_USE_INTEL_HEXL)
+             size_t N = size_t(1) << tables.coeff_count_power();
+             uint64_t p = tables.modulus().value();
+             uint64_t root = tables.get_root();
+diff --git a/native/src/seal/util/ntt.h b/native/src/seal/util/ntt.h
+index 806cb291548df1ca321d3867ae9ee421da7534e7..c8bb76525e6c0569f4674f1c77431f7550850219 100644
+--- a/native/src/seal/util/ntt.h
++++ b/native/src/seal/util/ntt.h
+@@ -11,6 +11,10 @@
+ #include "seal/util/pointer.h"
+ #include "seal/util/uintarithsmallmod.h"
+ #include "seal/util/uintcore.h"
++
++#ifdef SEAL_USE_AXHEL
++#include "axhel/ntt/ntt.hpp"
++#endif
+ #include <stdexcept>
+ 
+ namespace seal
+@@ -83,6 +87,9 @@ namespace seal
+ 
+                 std::copy_n(copy.root_powers_.get(), coeff_count_, root_powers_.get());
+                 std::copy_n(copy.inv_root_powers_.get(), coeff_count_, inv_root_powers_.get());
++#ifdef SEAL_USE_AXHEL
++                initialize_axhel_ntt();
++#endif
+             }
+ 
+             NTTTables(int coeff_count_power, const Modulus &modulus, MemoryPoolHandle pool = MemoryManager::GetPool());
+@@ -149,6 +156,13 @@ namespace seal
+                 return ntt_handler_;
+             }
+ 
++#ifdef SEAL_USE_AXHEL
++            const unipi::axhel::NTT &axhel_ntt() const
++            {
++                return *axhel_ntt_;
++            }
++#endif
++
+         private:
+             NTTTables &operator=(const NTTTables &assign) = delete;
+ 
+@@ -156,6 +170,10 @@ namespace seal
+ 
+             void initialize(int coeff_count_power, const Modulus &modulus);
+ 
++#ifdef SEAL_USE_AXHEL
++            void initialize_axhel_ntt();
++#endif
++
+             MemoryPoolHandle pool_;
+ 
+             std::uint64_t root_ = 0;
+@@ -180,6 +198,10 @@ namespace seal
+             ModArithLazy mod_arith_lazy_;
+ 
+             NTTHandler ntt_handler_;
++
++#ifdef SEAL_USE_AXHEL
++            std::shared_ptr<const unipi::axhel::NTT> axhel_ntt_;
++#endif
+         };
+ 
+         /**
+diff --git a/native/src/seal/util/polyarithsmallmod.cpp b/native/src/seal/util/polyarithsmallmod.cpp
+index e3f0afca555f2c59587f8d0d3204ec39bd5520e5..9f998cc67b61550b10ccdac8f87cba9cd8458913 100644
+--- a/native/src/seal/util/polyarithsmallmod.cpp
++++ b/native/src/seal/util/polyarithsmallmod.cpp
+@@ -5,6 +5,10 @@
+ #include "seal/util/uintarith.h"
+ #include "seal/util/uintcore.h"
+ 
++#ifdef SEAL_USE_AXHEL
++#include "axhel/axhel.hpp"
++#endif
++
+ #ifdef SEAL_USE_INTEL_HEXL
+ #include "hexl/hexl.hpp"
+ #endif
+@@ -32,7 +36,10 @@ namespace seal
+             }
+ #endif
+ 
+-#ifdef SEAL_USE_INTEL_HEXL
++#ifdef SEAL_USE_AXHEL
++            unipi::axhel::EltwiseReduceMod(
++                result, poly, static_cast<uint64_t>(coeff_count), modulus.value(), modulus.value(), 1);
++#elif defined(SEAL_USE_INTEL_HEXL)
+             intel::hexl::EltwiseReduceMod(result, poly, coeff_count, modulus.value(), modulus.value(), 1);
+ #else
+             SEAL_ITERATE(
+@@ -64,7 +71,10 @@ namespace seal
+ #endif
+             const uint64_t modulus_value = modulus.value();
+ 
+-#ifdef SEAL_USE_INTEL_HEXL
++#ifdef SEAL_USE_AXHEL
++            unipi::axhel::EltwiseAddMod(
++                &result[0], &operand1[0], &operand2[0], static_cast<uint64_t>(coeff_count), modulus_value);
++#elif defined(SEAL_USE_INTEL_HEXL)
+             intel::hexl::EltwiseAddMod(&result[0], &operand1[0], &operand2[0], coeff_count, modulus_value);
+ #else
+ 
+@@ -109,7 +119,10 @@ namespace seal
+ #endif
+ 
+             const uint64_t modulus_value = modulus.value();
+-#ifdef SEAL_USE_INTEL_HEXL
++#ifdef SEAL_USE_AXHEL
++            unipi::axhel::EltwiseSubMod(
++                result, operand1, operand2, static_cast<uint64_t>(coeff_count), modulus_value);
++#elif defined(SEAL_USE_INTEL_HEXL)
+             intel::hexl::EltwiseSubMod(result, operand1, operand2, coeff_count, modulus_value);
+ #else
+             SEAL_ITERATE(iter(operand1, operand2, result), coeff_count, [&](auto I) {
+@@ -152,7 +165,10 @@ namespace seal
+             }
+ #endif
+ 
+-#ifdef SEAL_USE_INTEL_HEXL
++#ifdef SEAL_USE_AXHEL
++            unipi::axhel::EltwiseAddMod(
++                result, poly, scalar, static_cast<uint64_t>(coeff_count), modulus.value());
++#elif defined(SEAL_USE_INTEL_HEXL)
+             intel::hexl::EltwiseAddMod(result, poly, scalar, coeff_count, modulus.value());
+ #else
+             SEAL_ITERATE(iter(poly, result), coeff_count, [&](auto I) {
+@@ -184,7 +200,10 @@ namespace seal
+             }
+ #endif
+ 
+-#ifdef SEAL_USE_INTEL_HEXL
++#ifdef SEAL_USE_AXHEL
++            unipi::axhel::EltwiseSubMod(
++                result, poly, scalar, static_cast<uint64_t>(coeff_count), modulus.value());
++#elif defined(SEAL_USE_INTEL_HEXL)
+             intel::hexl::EltwiseSubMod(result, poly, scalar, coeff_count, modulus.value());
+ #else
+             SEAL_ITERATE(iter(poly, result), coeff_count, [&](auto I) {
+@@ -213,7 +232,10 @@ namespace seal
+             }
+ #endif
+ 
+-#ifdef SEAL_USE_INTEL_HEXL
++#ifdef SEAL_USE_AXHEL
++            unipi::axhel::EltwiseFMAMod(
++                &result[0], &poly[0], scalar.operand, nullptr, static_cast<uint64_t>(coeff_count), modulus.value(), 8);
++#elif defined(SEAL_USE_INTEL_HEXL)
+             intel::hexl::EltwiseFMAMod(&result[0], &poly[0], scalar.operand, nullptr, coeff_count, modulus.value(), 8);
+ #else
+             SEAL_ITERATE(iter(poly, result), coeff_count, [&](auto I) {
+@@ -249,7 +271,10 @@ namespace seal
+                 throw invalid_argument("modulus");
+             }
+ #endif
+-#ifdef SEAL_USE_INTEL_HEXL
++#ifdef SEAL_USE_AXHEL
++            unipi::axhel::EltwiseMulMod(
++                &result[0], &operand1[0], &operand2[0], static_cast<uint64_t>(coeff_count), modulus.value(), 4);
++#elif defined(SEAL_USE_INTEL_HEXL)
+             intel::hexl::EltwiseMultMod(&result[0], &operand1[0], &operand2[0], coeff_count, modulus.value(), 4);
+ #else
+             const uint64_t modulus_value = modulus.value();
