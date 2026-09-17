@@ -83,48 +83,51 @@ In addition, AXHEL supports the standard CMake configuration variables.
 ### Compile AXHEL
 AXHEL supports building from source using the CMake build system. The following instructions describe how to configure, build and install the library.
 
-After cloning or downloading the repository, navigate to the project root directory.
+1. **Navigate to the project root directory.**
+
+After cloning or downloading the repository:
 
 ```bash
 cd axhel
 ```
-1. **Configure the library.**
 
-    ```bash
-    cmake -S . -B build
-    ```
-    This creates a Release build targeting the native CPU with the default AXHEL configuration.
+2. **Configure the library.**
 
-    Additional compile-time options can be specified using `-D`. 
+```bash
+cmake -S . -B build
+```
+This creates a Release build targeting the native CPU with the default AXHEL configuration.
 
-    For example, to install AXHEL in a custom location, configure the build with:
+Additional compile-time options can be specified using `-D`. 
 
-    ```bash
-    cmake -S . -B build -DCMAKE_INSTALL_PREFIX=/path/to/install
-    ```
+For example, to install AXHEL in a custom location, configure the build with:
 
-    For example, to build AXHEL for a Neoverse V1 Arm CPU:
+```bash
+cmake -S . -B build -DCMAKE_INSTALL_PREFIX=/path/to/install
+```
 
-    ```bash
-    cmake -S . -B build -DAXHEL_CPU=neoverse-v1
-    ```
+For example, to build AXHEL for a Neoverse V1 Arm CPU:
 
-2. **Build the library.**
+```bash
+cmake -S . -B build -DAXHEL_CPU=neoverse-v1
+```
 
-    ```bash
-    cmake --build build
-    ```
+3. **Build the library.**
 
-    This command builds the AXHEL library and any enabled targets in the `build/` directory.
+```bash
+cmake --build build
+```
 
-3. **Install the library.**
+This command builds the AXHEL library and any enabled targets in the `build/` directory.
 
-    ```bash
-    cmake --install build
-    ```
+4. **Install the library.**
 
-    The installation includes the AXHEL library, public headers, CMake package configuration files, and exported CMake targets, 
-    allowing AXHEL to be easily integrated into external CMake projects using `find_package(AXHEL)`.
+```bash
+cmake --install build
+```
+
+The installation includes the AXHEL library, public headers, CMake package configuration files, and exported CMake targets, 
+allowing AXHEL to be easily integrated into external CMake projects using `find_package(AXHEL)`.
 
 ## Debugging
 
@@ -142,7 +145,17 @@ Enabling `CMAKE_BUILD_TYPE=Debug` introduces a significant runtime overhead and 
 
 ## Integration
 
-AXHEL is designed to be easily integrated into homomorphic encryption frameworks requiring high-performance modular arithmetic kernels.
+AXHEL is designed to be integrated into homomorphic encryption frameworks requiring high-performance modular arithmetic and NTT kernels.
+
+The `integration/` directory provides version-specific integration files for supported external libraries. Each integration is kept separate from the AXHEL
+core library and can be applied after AXHEL has been built and installed.
+
+The complete list of supported integrations, versions, and setup instructions is maintained in the [integration README](integration/README.md).
+
+> [!NOTE]
+> Currently, AXHEL provides integration support for Microsoft SEAL versions 4.4.0 through 4.4.5.
+
+
 
 ## License
 
