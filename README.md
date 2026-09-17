@@ -5,9 +5,9 @@
 
 # ARM aXceleration for Homomorphic Encryption Library
 
-AXHEL is an open-source C++ library providing optimized modular arithmetic kernels for homomorphic encryption on ARM processors. AXHEL accelerates the arithmetic primitives commonly used by homomorphic encryption libraries by exploiting ARM Scalable Vector Extension (SVE) while maintaining portable scalar implementations.
+AXHEL is an open-source C++ acceleration library for AArch64 processors providing optimized modular arithmetic and Number Theoretic Transform (NTT) kernels for homomorphic encryption.
 
-AXHEL is designed as a lightweight acceleration layer that can be integrated into existing homomorphic encryption frameworks to improve the performance of modular arithmetic on modern AArch64 platforms.
+AXHEL exploits the Arm Scalable Vector Extension (SVE) when available while providing portable native/scalar implementations as fallback. It is designed as a lightweight acceleration layer that can be integrated into existing homomorphic encryption frameworks.
 
 ## Introduction
 
@@ -22,29 +22,31 @@ Although ciphertext operations are expressed as polynomial additions, multiplica
 of modular arithmetic operations on vectors of 64-bit coefficients. Since these operations are executed repeatedly throughout the evaluation process, 
 they represent one of the primary computational bottlenecks of practical HE implementations.
 
-AXHEL (ARM aXceleration for Homomorphic Encryption Library) is an open-source C++ library that provides optimized implementations of these arithmetic kernels 
-for ARM AArch64 processors. By exploiting ARM Scalable Vector Extension (SVE), AXHEL accelerates the low-level modular arithmetic primitives that constitute 
-the building blocks of higher-level homomorphic encryption operations, while preserving portable scalar implementations for maximum compatibility.
+AXHEL (Arm aXceleration for Homomorphic Encryption Library) is an open-source C++ library that provides optimized implementations of low-level modular arithmetic and Number Theoretic Transform (NTT) kernels for Arm AArch64 processors. By exploiting Arm Scalable Vector Extension (SVE), AXHEL accelerates these computational building blocks of higher-level homomorphic encryption operations, while preserving portable scalar implementations for maximum compatibility.
+
+These kernels are not specific to a single homomorphic encryption scheme. They are shared by schemes such as CKKS, BFV, and BGV, allowing AXHEL to accelerate their execution whenever the corresponding low-level arithmetic and NTT primitives are used.
 
 ## Features
 
-The library covers the following kernels:
-| Kernel | Scalar | SVE |
-|---|---:|---:|
-| EltwiseAddMod | ✓ | ✓ |
-| EltwiseSubMod | ✓ | ✓ |
-| EltwiseMulMod | ✓ | ✓ |
-| EltwiseFMAMod | ✓ | ✓ |
-| EltwiseReduceMod | ✓ | ✓ |
-| NTT | ✓ | ✓ |
-| INTT | ✓ | ✓ |
+The library provides the following kernels:
 
-Each kernel is available through multiple implementations sharing the same public API. During the CMake configuration phase, AXHEL automatically detects the capabilities 
-of the target compiler and processor and selects the most appropriate implementation. This approach enables architecture-specific optimizations while preserving portability. 
+| Kernel | Native | SVE | Description |
+|---|:---:|:---:|---|
+| `EltwiseAddMod` | ✓ | ✓ | Element-wise modular addition |
+| `EltwiseSubMod` | ✓ | ✓ | Element-wise modular subtraction |
+| `EltwiseMulMod` | ✓ | ✓ | Element-wise modular multiplication |
+| `EltwiseFMAMod` | ✓ | ✓ | Element-wise modular multiply-add |
+| `EltwiseReduceMod` | ✓ | ✓ | Element-wise modular reduction |
+| `ForwardNTT` | ✓ | ✓ | Forward negacyclic Number Theoretic Transform |
+| `InverseNTT` | ✓ | ✓ | Inverse negacyclic Number Theoretic Transform |
+
+Addition and subtraction support vector-vector and vector-scalar forms; multiplication is vector-vector, while FMA performs vector-scalar multiplication with an optional vector addend. The NTT interface provides lazy and normalized forward and inverse negacyclic transforms.
+
+Each kernel is available through native and, when supported, SVE-optimized implementations sharing the same public API. During CMake configuration, AXHEL detects SVE support for the configured target and enables the SVE backend when available; otherwise, the native implementation is used automatically.
 
 ## Building AXHEL
 
-AXHEL uses CMake as its build system, enabling a portable and configurable build process across supported ARM AArch64 platforms. 
+AXHEL uses CMake as its build system, enabling a portable and configurable build process across supported Arm AArch64 platforms. 
 The following sections describe the required dependencies, available build options, and the steps needed to configure, compile and install the library.
 
 ### Requirements
@@ -56,8 +58,8 @@ The following software is required to build AXHEL.
 | CMake | 3.13 or later |
 | Compiler | GCC 10+ or Clang 12+ |
 
-AXHEL has been developed and tested on Linux-based ARM AArch64 platforms. Support for ARM Scalable Vector Extension (SVE) is automatically detected during the CMake configuration process. 
-When supported by the target compiler and processor, the corresponding optimized kernels are enabled automatically; otherwise, AXHEL transparently falls back to the portable scalar implementation.
+AXHEL has been developed and tested on Linux-based Arm AArch64 platforms. Support for Arm Scalable Vector Extension (SVE) is automatically detected during CMake configuration. 
+When SVE is supported by the configured target, the optimized SVE backend is enabled; otherwise, AXHEL falls back to the portable native implementation.
 
 ### Compile-time options
 
@@ -68,14 +70,14 @@ AXHEL supports the following library-specific compile-time options.
 | `AXHEL_SHARED_LIB` | `ON`, `OFF` | `OFF` | Build AXHEL as a shared library instead of a static library. |
 | `AXHEL_TREAT_WARNING_AS_ERROR` | `ON`, `OFF` | `OFF` | Treat compiler warnings as errors. |
 | `AXHEL_CPU` | Any CPU name supported by the compiler, e.g. `native`, `neoverse-v1`, `neoverse-v2` | `native` | Select the target ARM CPU passed to the compiler through `-mcpu=<value>`. |
-| `AXHEL_OPT_REPORT` | `ON`, `OFF` | `OFF` | Enable GCC/Clang optimization reports. |
+| `AXHEL_OPT_REPORT` | `ON`, `OFF` | `OFF` | Enable compiler optimization reports. |
 
 In addition, AXHEL supports the standard CMake configuration variables.
 
 | CMake Variable | Typical Values | Default | Description |
 |----------------|----------------|:-------:|-------------|
 | `CMAKE_BUILD_TYPE` | `Release`, `Debug` | `Release` | Select the build configuration. `Debug` enables debug symbols, AXHEL runtime tracing, and AddressSanitizer. |
-| `CMAKE_INSTALL_PREFIX` | `<path>` | System default | Specify the installation directory used by `cmake --install`. |
+| `CMAKE_INSTALL_PREFIX` | `</install/path>` | System default | Specify the installation directory used by `cmake --install`. |
 
 
 ### Compile AXHEL
@@ -84,57 +86,63 @@ AXHEL supports building from source using the CMake build system. The following 
 After cloning or downloading the repository, navigate to the project root directory.
 
 ```bash
-cd AXHEL
+cd axhel
 ```
-Configure the project using CMake. Additional compile-time options can be specified during the CMake configuration step by adding the desired option with the `-D` flag.
+1. **Configure the library.**
 
-```bash
-cmake -S . -B build
-```
-For example, to use a non-default installation directory, configure the build with:
+    ```bash
+    cmake -S . -B build
+    ```
+    This creates a Release build targeting the native CPU with the default AXHEL configuration.
 
-```bash
-cmake -S . -B build -DCMAKE_INSTALL_PREFIX=/path/to/install
-```
+    Additional compile-time options can be specified using `-D`. 
 
-For example, to build AXHEL for the a Neoverse V1 ARM CPU:
+    For example, to install AXHEL in a custom location, configure the build with:
 
-```bash
-cmake -S . -B build -DAXHEL_CPU=neoverse-v1
-```
+    ```bash
+    cmake -S . -B build -DCMAKE_INSTALL_PREFIX=/path/to/install
+    ```
 
-Build AXHEL by running:
+    For example, to build AXHEL for a Neoverse V1 Arm CPU:
 
-```bash
-cmake --build build
-```
+    ```bash
+    cmake -S . -B build -DAXHEL_CPU=neoverse-v1
+    ```
 
-This command builds the AXHEL library and any enabled targets in the `build/` directory.
+2. **Build the library.**
 
-Install AXHEL by running:
+    ```bash
+    cmake --build build
+    ```
 
-```bash
-cmake --install build
-```
+    This command builds the AXHEL library and any enabled targets in the `build/` directory.
 
-The installation includes the AXHEL library, public headers, CMake package configuration files, and exported CMake targets, 
-enabling AXHEL to be easily integrated into external CMake projects using `find_package(AXHEL)`.
+3. **Install the library.**
+
+    ```bash
+    cmake --install build
+    ```
+
+    The installation includes the AXHEL library, public headers, CMake package configuration files, and exported CMake targets, 
+    allowing AXHEL to be easily integrated into external CMake projects using `find_package(AXHEL)`.
 
 ## Debugging
 
-For maximum performance, AXHEL performs only minimal runtime validation in `Release` builds. To debug AXHEL, configure and build the library with `-DCMAKE_BUILD_TYPE=Debug`. This generates a debug version of the library (e.g., `libaxhel_debug.a`) with debug symbols, enables internal `AXHEL_LOG` tracing, and links against AddressSanitizer.
+For maximum performance, AXHEL performs only minimal runtime validation in `Release` builds. 
+To debug AXHEL, configure and build the library with `-DCMAKE_BUILD_TYPE=Debug`. 
 
-Enabling `CMAKE_BUILD_TYPE=Debug` introduces a significant runtime overhead and is intended exclusively for debugging and development.
+```bash
+cmake -S . -B build-debug -DCMAKE_BUILD_TYPE=Debug
+cmake --build build-debug
+```
+
+This generates a debug version of the library (e.g., `libaxhel_debug.a`) with debug symbols, enables internal `AXHEL_LOG` tracing, and links against AddressSanitizer.
+
+Enabling `CMAKE_BUILD_TYPE=Debug` introduces a significant runtime overhead and is intended exclusively for debugging and development, not for performance evaluation.
 
 ## Integration
 
 AXHEL is designed to be easily integrated into homomorphic encryption frameworks requiring high-performance modular arithmetic kernels.
-
-
-## Contributing
-
-Contributions, bug reports and feature requests are welcome.
-
 
 ## License
 
@@ -142,4 +150,5 @@ AXHEL is distributed under the Apache License 2.0.
 
 Some source files are derived from or inspired by Intel HEXL and retain the corresponding copyright notices in accordance with the Apache License.
 
-All ARM-specific implementations and additional developments are Copyright © 2026 University of Pisa.
+All Arm-specific implementations and additional developments are Copyright © 2026 University of Pisa.
+
