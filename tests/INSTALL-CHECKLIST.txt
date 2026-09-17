@@ -1,0 +1,24 @@
+AXHEL TEST SUITE V5 — DETERMINISTIC EXTENDED REGRESSION
+
+The suite is fully integrated. No manual source/CMake patch is required.
+There is exactly one test mode: regression.
+
+[ ] sudo apt install libgtest-dev
+[ ] chmod +x tests/scripts/*.sh
+[ ] ./tests/scripts/configure-tests.sh
+[ ] confirm build-test-native reaches 100%
+[ ] confirm build-test-sve reaches 100%
+[ ] ./tests/scripts/run-regression.sh
+
+Expected SVE-machine configure summary:
+
+Native regression build:
+  AXHEL_SVE_DETECTED: 1
+  AXHEL_HAS_SVE (effective backend): 0
+
+SVE regression build:
+  AXHEL_SVE_DETECTED: 1
+  AXHEL_HAS_SVE (effective backend): 1
+
+V5 regression is fixed and deterministic. Its seed and parameter matrix are not
+controlled by environment variables.

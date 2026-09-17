@@ -3,7 +3,7 @@
 
 cmake_minimum_required(VERSION 3.13)
 project(AXHEL 
-        VERSION 0.1 
+        VERSION 1.0.0 
         DESCRIPTION "ARM aXeleration for Homomorphic Encryption Library"
         LANGUAGES C CXX)
 
@@ -68,9 +68,13 @@ set(CMAKE_INSTALL_RPATH "\$ORIGIN")
 #------------------------------------
 
 option(AXHEL_BENCHMARK "Enable benchmarking" OFF)
+option(AXHEL_BENCHMARK_FORCE_NATIVE "Force native backend only in AXHEL benchmark builds" OFF)
+option(AXHEL_BENCHMARK_FORCE_SCALAR "Force strict scalar backend (no compiler auto-vectorization) in AXHEL benchmark builds" OFF)
 #option(AXHEL_DOCS "Enable documentation building" OFF)
 option(AXHEL_SHARED_LIB "Generate a shared library" OFF)
-option(AXHEL_TESTING "Enables unit-tests" OFF)
+option(AXHEL_TESTING "Enable AXHEL correctness and regression tests" OFF)
+option(AXHEL_TEST_FETCH_GTEST "Fetch GoogleTest if not installed" OFF)
+option(AXHEL_TEST_FORCE_NATIVE "Force native backend only in AXHEL test builds" OFF)
 option(AXHEL_TREAT_WARNING_AS_ERROR "Treat all compile-time warnings as errors" OFF)
 option(AXHEL_OPT_REPORT "Enable GCC/Clang optimization reports" OFF)
 set(AXHEL_CPU "native" CACHE STRING "ARM CPU target passed to the compiler through -mcpu")
@@ -93,11 +97,14 @@ message(STATUS "CMAKE_BUILD_TYPE:              ${CMAKE_BUILD_TYPE}")
 message(STATUS "CMAKE_C_COMPILER:              ${CMAKE_C_COMPILER}")
 message(STATUS "CMAKE_CXX_COMPILER:            ${CMAKE_CXX_COMPILER}")
 message(STATUS "AXHEL_CPU:                     ${AXHEL_CPU}")
-#message(STATUS "AXHEL_BENCHMARK:               ${AXHEL_BENCHMARK}")
+message(STATUS "AXHEL_BENCHMARK:               ${AXHEL_BENCHMARK}")
+message(STATUS "AXHEL_BENCHMARK_FORCE_NATIVE:  ${AXHEL_BENCHMARK_FORCE_NATIVE}")
+message(STATUS "AXHEL_BENCHMARK_FORCE_SCALAR:  ${AXHEL_BENCHMARK_FORCE_SCALAR}")
 message(STATUS "AXHEL_DEBUG:                   ${AXHEL_DEBUG}")
 #message(STATUS "AXHEL_DOCS:                    ${AXHEL_DOCS}")
 message(STATUS "AXHEL_SHARED_LIB:              ${AXHEL_SHARED_LIB}")
 message(STATUS "AXHEL_TESTING:                 ${AXHEL_TESTING}")
+message(STATUS "AXHEL_TEST_FORCE_NATIVE:       ${AXHEL_TEST_FORCE_NATIVE}")
 message(STATUS "AXHEL_TREAT_WARNING_AS_ERROR:  ${AXHEL_TREAT_WARNING_AS_ERROR}")
 message(STATUS "AXHEL_OPT_REPORT:              ${AXHEL_OPT_REPORT}")
 
@@ -128,9 +135,42 @@ message(STATUS "CMAKE_CXX_FLAGS ${CMAKE_CXX_FLAGS}")
 # Detect SVE support
 #------------------------------------
 
+# Always perform the normal SVE capability detection. The test/benchmark
+# force-Native/strict-scalar switches only change the effective backend in
+# their dedicated builds; neither bypasses hardware/compiler detection.
 axhel_check_compile_flag("${AXHEL_CMAKE_PATH}/test-sve.cpp" AXHEL_HAS_SVE)
+set(AXHEL_SVE_DETECTED ${AXHEL_HAS_SVE})
 
-message(STATUS "AXHEL_HAS_SVE: ${AXHEL_HAS_SVE}")
+if(AXHEL_TEST_FORCE_NATIVE)
+    if(NOT AXHEL_TESTING)
+        message(FATAL_ERROR "AXHEL_TEST_FORCE_NATIVE is valid only with AXHEL_TESTING=ON")
+    endif()
+    set(AXHEL_HAS_SVE 0)
+endif()
+
+if(AXHEL_BENCHMARK_FORCE_NATIVE AND AXHEL_BENCHMARK_FORCE_SCALAR)
+    message(FATAL_ERROR "AXHEL_BENCHMARK_FORCE_NATIVE and AXHEL_BENCHMARK_FORCE_SCALAR are mutually exclusive")
+endif()
+
+if(AXHEL_BENCHMARK_FORCE_NATIVE)
+    if(NOT AXHEL_BENCHMARK)
+        message(FATAL_ERROR "AXHEL_BENCHMARK_FORCE_NATIVE is valid only with AXHEL_BENCHMARK=ON")
+    endif()
+    set(AXHEL_HAS_SVE 0)
+endif()
+
+if(AXHEL_BENCHMARK_FORCE_SCALAR)
+    if(NOT AXHEL_BENCHMARK)
+        message(FATAL_ERROR "AXHEL_BENCHMARK_FORCE_SCALAR is valid only with AXHEL_BENCHMARK=ON")
+    endif()
+    # Strict scalar is a distinct benchmark configuration: exclude SVE sources
+    # and dispatch through the public Native path. Auto-vectorization itself is
+    # disabled on the AXHEL target in axhel/CMakeLists.txt.
+    set(AXHEL_HAS_SVE 0)
+endif()
+
+message(STATUS "AXHEL_SVE_DETECTED: ${AXHEL_SVE_DETECTED}")
+message(STATUS "AXHEL_HAS_SVE (effective backend): ${AXHEL_HAS_SVE}")
 
 #------------------------------------
 # Installation configuration
@@ -154,6 +194,15 @@ message(STATUS "CMAKE_INSTALL_PREFIX:     ${CMAKE_INSTALL_PREFIX}")
 #------------------------------------
 
 add_subdirectory(axhel)
+
+if(AXHEL_TESTING)
+    enable_testing()
+    add_subdirectory(tests)
+endif()
+
+if(AXHEL_BENCHMARK)
+    add_subdirectory(benchmark)
+endif()
 
 #------------------------------------
 # Optional components
