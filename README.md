@@ -220,8 +220,6 @@ The complete list of supported integrations, versions, and setup instructions is
 > [!NOTE]
 > Currently, AXHEL provides integration support for Microsoft SEAL versions 4.4.0 through 4.4.5.
 
-
-
 ## License
 
 AXHEL is distributed under the Apache License 2.0.
@@ -230,3 +228,9 @@ Some source files are derived from or inspired by Intel HEXL and retain the corr
 
 All Arm-specific implementations and additional developments are Copyright © 2026 University of Pisa.
 
+## Acknowledgment
+
+This work was carried out within the [AERO project](https://aero-project.eu/), funded by the Horizon Europe programme under Grant Agreement No. 101092850. 
+
+It was partially supported by the Italian Ministry of Education and Research (MUR) in the framework of the FoReLab project (Departments of Excellence). Computational resources
+provided by computing@unipi, a Computing Service provided by University of Pisa.
